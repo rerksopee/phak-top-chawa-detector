@@ -80,7 +80,6 @@ model = load_model()
 
 # =========================
 # ค่าการแปลง pixel -> ตารางเมตร
-# ปรับค่าตามการสอบเทียบจริง
 # =========================
 PIXELS_PER_SQUARE_METER = 2500.0
 
@@ -89,63 +88,57 @@ PIXELS_PER_SQUARE_METER = 2500.0
 # ฟังก์ชันตรวจจับ
 # =========================
 def detect(frame):
-    # รันโมเดล
     results = model(frame, conf=0.3, iou=0.4)
 
-    # เก็บผลลัพธ์ข้อความ (รูปแบบเดียวกับโค้ดเดิม)
     output_text = []
 
-    # ถ้ามี segmentation mask
-    if results[0].masks is not None:
+    if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
 
-        # วนลูปทีละกอ
         for i, mask in enumerate(masks):
 
-            # 1) ปรับขนาด mask ให้เท่ากับภาพต้นฉบับ
+            # resize mask
             mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
 
-            # 2) แปลงเป็น Binary Image
+            # binary mask
             binary = (mask > 0.5)
 
-            # 3) คำนวณพื้นที่ (pixel)
+            # pixel area
             area_pixels = int(binary.sum())
 
-            # 4) แปลงเป็นตารางเมตร
-         #  area_m2 = area_pixels / PIXELS_PER_SQUARE_METER
+            # กัน noise
+            if area_pixels < 50:
+                continue
 
-            # 5) หา centroid
+            # แปลงเป็น m²
+            area_m2 = area_pixels / PIXELS_PER_SQUARE_METER
+            area_m2 = round(area_m2, 2)
+
+            # centroid
             ys, xs = np.where(binary)
 
-            # ถ้าไม่มี pixel ให้ข้าม
             if len(xs) == 0 or len(ys) == 0:
                 continue
 
             cx = int(xs.mean())
             cy = int(ys.mean())
 
-            # 6) เก็บข้อความผลลัพธ์
-            # รูปแบบเหมือนโค้ดเดิม:
-            # กอ#1 12.34 ตารางเมตร (x=123, y=456)
+            # เก็บข้อความ
             output_text.append(
-                f"กอ#{i+1} {area} pixel (x={cx}, y={cy})"
+                f"กอ#{i+1} {area_m2} m² (x={cx}, y={cy})"
             )
 
-            # 7) สร้าง Bounding Box จาก Mask
+            # contour
             contours, _ = cv2.findContours(
-                binary.astype('uint8'),
+                (binary * 255).astype("uint8"),
                 cv2.RETR_EXTERNAL,
                 cv2.CHAIN_APPROX_SIMPLE
             )
 
             if contours:
-                # เลือก contour ที่มีพื้นที่มากที่สุด
                 cnt = max(contours, key=cv2.contourArea)
-
-                # หา Bounding Box
                 x, y, w, h = cv2.boundingRect(cnt)
 
-                # วาดกรอบสีเขียว
                 cv2.rectangle(
                     frame,
                     (x, y),
@@ -154,47 +147,37 @@ def detect(frame):
                     1
                 )
 
-            # 8) วาดจุด centroid 
-            cv2.circle(
-                frame,
-                (cx, cy),
-                1,
-                (0, 0, 255),
-                2
-            )
+            # centroid จุดแดง
+            cv2.circle(frame, (cx, cy), 2, (0, 0, 255), 2)
 
-            # 9) แสดงหมายเลขกอ 
+            # label
             cv2.putText(
                 frame,
                 str(i + 1),
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.4,
+                0.5,
                 (255, 0, 0),
                 1
             )
 
-    # คืนค่าเหมือนโค้ดเดิม
     return frame, output_text
 
 
 # =========================
-# ส่วนหัวเว็บ
+# UI
 # =========================
 st.markdown("""
 <div class="main-title">🌿 Phak Top Chawa Detector</div>
 <div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>
 """, unsafe_allow_html=True)
 
-# =========================
-# อัปโหลดไฟล์
-# =========================
 st.markdown('<div class="custom-box">', unsafe_allow_html=True)
 
-st.subheader("📤 อัปโหลดรูปภาพเพื่อตรวจจับกอผักตบชวา")
+st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader(
-    "รองรับไฟล์ JPG, JPEG, PNG",
+    "รองรับ JPG, JPEG, PNG",
     type=["jpg", "jpeg", "png"]
 )
 
@@ -202,48 +185,45 @@ analyze = st.button("🔍 วิเคราะห์ภาพ")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
+
 # =========================
-# วิเคราะห์ภาพ
+# RUN
 # =========================
 if uploaded_file is not None and analyze:
+
     with st.spinner("กำลังวิเคราะห์ภาพ..."):
 
-        # อ่านภาพ
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
 
-        # RGB -> BGR
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        # ตรวจจับ
         result_frame, texts = detect(frame)
 
-        # BGR -> RGB
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
         # =========================
-        # รายละเอียดแต่ละกอ
-        # แสดงเป็นคนละบรรทัดธรรมดา
-        # ไม่มีกรอบแยกแต่ละกอ
+        # ผลลัพธ์ข้อความ
         # =========================
         st.markdown('<div class="custom-box">', unsafe_allow_html=True)
         st.subheader("📋 ผลการตรวจจับ")
 
         if texts:
             for t in texts:
-                st.write(t)   # คนละบรรทัดธรรมดา
+                st.write(t)
         else:
-            st.warning("ไม่พบกอผักตบชวาในภาพ")
+            st.warning("ไม่พบกอผักตบชวา")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
         # =========================
-        # แสดงภาพผลลัพธ์
+        # ภาพผลลัพธ์
         # =========================
         st.markdown('<div class="custom-box">', unsafe_allow_html=True)
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
+
 
 # =========================
 # Footer
