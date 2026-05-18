@@ -169,7 +169,7 @@ def detect(frame):
                 str(i + 1),
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
-               0.5,
+                0.2,
                 (0, 0, 255),
                 1
             )
