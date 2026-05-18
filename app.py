@@ -20,77 +20,32 @@ st.markdown("""
 <style>
 
 /* =========================
-   BASE BACKGROUND
+   FIX FILE UPLOADER TEXT (IMPORTANT)
 ========================= */
-.stApp {
-    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
-}
-
-/* =========================
-   FORCE STREAMLIT TEXT (SAFE VERSION)
-========================= */
-div[data-testid="stMarkdown"] p,
-div[data-testid="stMarkdown"] span,
-div[data-testid="stText"],
-div[data-testid="stSubheader"],
-div[data-testid="stHeader"],
-div[data-testid="stCaption"] {
-    color: #1b5e20 !important;
-}
-
-/* labels */
-label {
-    color: #1b5e20 !important;
-}
-
-/* file uploader */
-div[data-testid="stFileUploader"] * {
-    color: #1b5e20 !important;
-}
-
-/* input box */
-input {
-    color: #1b5e20 !important;
-}
-
-/* =========================
-   TITLE CARD
-========================= */
-.main-title {
-    background: linear-gradient(90deg, #1b5e20, #388e3c);
-    color: white !important;
-    padding: 24px;
-    border-radius: 20px;
-    text-align: center;
-    font-size: 42px;
-    font-weight: 700;
-    margin-bottom: 10px;
-}
-
-/* subtitle */
-.sub-title {
-    text-align: center;
-    color: #1b5e20 !important;
-    font-size: 20px;
-    margin-bottom: 30px;
-    font-weight: 500;
-}
-
-/* box */
-.custom-box {
-    background: white;
-    padding: 28px;
-    border-radius: 22px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-    margin-bottom: 24px;
-    border: 1px solid #dcefd8;
-}
-
-/* button */
-.stButton > button {
-    background: linear-gradient(90deg, #2e7d32, #43a047);
-    color: white !important;
+div[data-testid="stFileUploader"] section {
+    background-color: white !important;
     border-radius: 12px;
+}
+
+/* label "อัปโหลดไฟล์" */
+div[data-testid="stFileUploader"] label {
+    color: #1b5e20 !important;
+    font-weight: 600 !important;
+}
+
+/* text inside uploader (drag & drop text) */
+div[data-testid="stFileUploader"] span {
+    color: #1b5e20 !important;
+}
+
+/* help text */
+div[data-testid="stFileUploader"] small {
+    color: #1b5e20 !important;
+}
+
+/* button text inside uploader */
+div[data-testid="stFileUploader"] button {
+    color: #1b5e20 !important;
 }
 
 </style>
