@@ -159,7 +159,7 @@ def detect(frame):
                 )
 
             # centroid
-            cv2.circle(frame, (cx, cy), 2, (0, 0, 255), 2)
+            cv2.circle(frame, (cx, cy), 2, (255, 0, 0), 2)
 
             # label
             cv2.putText(
@@ -168,7 +168,7 @@ def detect(frame):
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
-                (255, 0, 0),
+                (0, 0, 255),
                 2
             )
 
