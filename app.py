@@ -14,17 +14,25 @@ st.set_page_config(
 )
 
 # =========================
-# CSS ตกแต่งเว็บ
+# CSS (แก้ปัญหาสีใน system/dark mode)
 # =========================
 st.markdown("""
 <style>
+
+/* พื้นหลัง */
 .stApp {
     background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
 }
 
+/* 🔥 บังคับสีตัวหนังสือทั้งระบบ */
+html, body, [class*="css"] {
+    color: #1b5e20 !important;
+}
+
+/* title */
 .main-title {
     background: linear-gradient(90deg, #1b5e20, #388e3c);
-    color: white;
+    color: white !important;
     padding: 24px;
     border-radius: 20px;
     text-align: center;
@@ -34,14 +42,16 @@ st.markdown("""
     box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 
+/* subtitle */
 .sub-title {
     text-align: center;
-    color: #2e7d32;
+    color: #1b5e20 !important;
     font-size: 20px;
     margin-bottom: 30px;
     font-weight: 500;
 }
 
+/* กล่อง */
 .custom-box {
     background: white;
     padding: 28px;
@@ -49,11 +59,13 @@ st.markdown("""
     box-shadow: 0 10px 30px rgba(0,0,0,0.08);
     margin-bottom: 24px;
     border: 1px solid #dcefd8;
+    color: #1b5e20 !important;
 }
 
+/* ปุ่ม */
 .stButton > button {
     background: linear-gradient(90deg, #2e7d32, #43a047);
-    color: white;
+    color: white !important;
     font-size: 20px;
     font-weight: bold;
     border-radius: 12px;
@@ -64,8 +76,14 @@ st.markdown("""
 
 .stButton > button:hover {
     background: linear-gradient(90deg, #1b5e20, #2e7d32);
-    color: white;
+    color: white !important;
 }
+
+/* file uploader text */
+.stFileUploader label {
+    color: #1b5e20 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -79,10 +97,9 @@ def load_model():
 model = load_model()
 
 # =========================
-# ค่าการแปลง pixel -> ตารางเมตร
+# ค่าคาลิเบรต pixel -> m²
 # =========================
 PIXELS_PER_SQUARE_METER = 2500.0
-
 
 # =========================
 # ฟังก์ชันตรวจจับ
@@ -100,7 +117,7 @@ def detect(frame):
             # resize mask
             mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
 
-            # binary mask
+            # binary
             binary = (mask > 0.5)
 
             # pixel area
@@ -110,9 +127,8 @@ def detect(frame):
             if area_pixels < 50:
                 continue
 
-            # แปลงเป็น m²
-            area_m2 = area_pixels / PIXELS_PER_SQUARE_METER
-            area_m2 = round(area_m2, 2)
+            # 🔥 แปลงเป็น m²
+            area_m2 = round(area_pixels / PIXELS_PER_SQUARE_METER, 2)
 
             # centroid
             ys, xs = np.where(binary)
@@ -123,7 +139,6 @@ def detect(frame):
             cx = int(xs.mean())
             cy = int(ys.mean())
 
-            # เก็บข้อความ
             output_text.append(
                 f"กอ#{i+1} {area_m2} m² (x={cx}, y={cy})"
             )
@@ -147,7 +162,7 @@ def detect(frame):
                     1
                 )
 
-            # centroid จุดแดง
+            # centroid
             cv2.circle(frame, (cx, cy), 2, (0, 0, 255), 2)
 
             # label
@@ -163,15 +178,17 @@ def detect(frame):
 
     return frame, output_text
 
-
 # =========================
-# UI
+# UI HEADER
 # =========================
 st.markdown("""
 <div class="main-title">🌿 Phak Top Chawa Detector</div>
 <div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>
 """, unsafe_allow_html=True)
 
+# =========================
+# UPLOAD
+# =========================
 st.markdown('<div class="custom-box">', unsafe_allow_html=True)
 
 st.subheader("📤 อัปโหลดรูปภาพ")
@@ -184,7 +201,6 @@ uploaded_file = st.file_uploader(
 analyze = st.button("🔍 วิเคราะห์ภาพ")
 
 st.markdown('</div>', unsafe_allow_html=True)
-
 
 # =========================
 # RUN
@@ -224,12 +240,11 @@ if uploaded_file is not None and analyze:
         st.image(result_rgb, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-
 # =========================
-# Footer
+# FOOTER
 # =========================
 st.markdown("""
-<div style="text-align:center; color:#2e7d32; margin-top:40px; padding:20px;">
+<div style="text-align:center; color:#1b5e20; margin-top:40px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
     ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา
 </div>
