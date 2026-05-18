@@ -170,7 +170,7 @@ def detect(frame):
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
-                (0, 0, 255),
+                (255, 0, 0),
                 2
             )
 
@@ -227,7 +227,7 @@ if uploaded_file is not None and analyze:
         # ไม่มีกรอบแยกแต่ละกอ
         # =========================
         st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-        st.subheader("📋 รายละเอียดแต่ละกอ")
+        st.subheader("📋 ผลการตรวจจับ")
 
         if texts:
             for t in texts:
