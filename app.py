@@ -4,137 +4,122 @@ from ultralytics import YOLO
 import numpy as np
 from PIL import Image
 
-# ==========================================================
+# =========================
 # ตั้งค่าหน้าเว็บ
-# ==========================================================
+# =========================
 st.set_page_config(
     page_title="Phak Top Chawa Detector",
     page_icon="🌿",
-    layout="wide"
+    layout="centered"
 )
 
-# ==========================================================
-# CSS ตกแต่งเว็บ (ธีมสีเขียว เรียบง่าย)
-# ==========================================================
+# =========================
+# CSS ตกแต่งเว็บ
+# =========================
 st.markdown("""
 <style>
-/* พื้นหลังเว็บ */
 .stApp {
-    background-color: #f4f8f2;
+    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
 }
 
-/* หัวข้อหลัก */
 .main-title {
+    background: linear-gradient(90deg, #1b5e20, #388e3c);
+    color: white;
+    padding: 24px;
+    border-radius: 20px;
     text-align: center;
     font-size: 42px;
-    font-weight: bold;
-    color: #1b5e20;
-    margin-top: 20px;
+    font-weight: 700;
     margin-bottom: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 
-/* คำอธิบาย */
 .sub-title {
     text-align: center;
-    font-size: 20px;
     color: #2e7d32;
+    font-size: 20px;
     margin-bottom: 30px;
+    font-weight: 500;
 }
 
-/* กล่องเนื้อหา */
 .custom-box {
-    background-color: #ffffff;
-    border-radius: 12px;
-    padding: 30px;
-    margin-bottom: 25px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    background: white;
+    padding: 28px;
+    border-radius: 22px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    margin-bottom: 24px;
+    border: 1px solid #dcefd8;
 }
 
-/* ปุ่ม */
+.metric-card {
+    background: #f6fff4;
+    border: 1px solid #d7ecd1;
+    border-radius: 18px;
+    padding: 20px;
+    margin-bottom: 12px;
+}
+
 .stButton > button {
-    background-color: #2e7d32;
+    background: linear-gradient(90deg, #2e7d32, #43a047);
     color: white;
     font-size: 20px;
     font-weight: bold;
+    border-radius: 12px;
+    padding: 12px 24px;
     border: none;
-    border-radius: 8px;
-    padding: 12px 20px;
     width: 100%;
 }
 
 .stButton > button:hover {
-    background-color: #1b5e20;
+    background: linear-gradient(90deg, #1b5e20, #2e7d32);
     color: white;
-}
-
-/* File uploader เป็นเส้นขอบเขียว */
-section[data-testid="stFileUploader"] {
-    border: 2px dashed #81c784;
-    border-radius: 10px;
-    padding: 15px;
-    background-color: #f9fff9;
-}
-
-/* Footer */
-.footer {
-    text-align: center;
-    color: #2e7d32;
-    margin-top: 40px;
-    padding: 20px;
-    font-size: 14px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================================
+# =========================
 # โหลดโมเดล
-# ==========================================================
+# =========================
 @st.cache_resource
 def load_model():
-    return YOLO("best.pt")   # ต้องมีไฟล์ best.pt อยู่ในโฟลเดอร์เดียวกับ app.py
+    return YOLO("best.pt")
 
 model = load_model()
 
-# ==========================================================
+# =========================
 # ค่าการแปลง pixel -> ตารางเมตร
-# ปรับค่านี้ตามการสอบเทียบจริงของคุณ
-# ==========================================================
+# ปรับค่าตามการสอบเทียบจริง
+# =========================
 PIXELS_PER_SQUARE_METER = 2500.0
 
 
-# ==========================================================
+# =========================
 # ฟังก์ชันตรวจจับ
-# ==========================================================
+# =========================
 def detect(frame):
-    """
-    ตรวจจับผักตบชวาและคำนวณพื้นที่แต่ละกอ
-    คืนค่า:
-    - frame: ภาพที่วาดกรอบและหมายเลข
-    - result_data: รายการข้อมูลแต่ละกอ
-    """
-
     results = model(frame, conf=0.3, iou=0.4)
-    result_data = []
 
-    # ถ้ามี Segmentation Mask
+    # เก็บผลลัพธ์ในรูปแบบเดียวกับโค้ดเดิม
+    output_text = []
+
     if results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
 
         for i, mask in enumerate(masks):
 
-            # 1) ปรับขนาด mask ให้ตรงกับภาพจริง
+            # ปรับขนาด mask ให้ตรงกับภาพ
             mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
 
-            # 2) แปลงเป็น Binary Image
+            # แปลงเป็น Binary Image
             binary = (mask > 0.5)
 
-            # 3) คำนวณพื้นที่ (pixels)
+            # คำนวณพื้นที่จริง (pixel)
             area_pixels = int(binary.sum())
 
-            # 4) แปลงเป็นตารางเมตร
+            # แปลงเป็นตารางเมตร
             area_m2 = area_pixels / PIXELS_PER_SQUARE_METER
 
-            # 5) หา centroid
+            # หา centroid
             ys, xs = np.where(binary)
             if len(xs) == 0 or len(ys) == 0:
                 continue
@@ -142,16 +127,19 @@ def detect(frame):
             cx = int(xs.mean())
             cy = int(ys.mean())
 
-            # เก็บข้อมูลแต่ละกอ
-            result_data.append({
-                "id": i + 1,
-                "pixels": area_pixels,
-                "area_m2": area_m2,
-                "x": cx,
-                "y": cy
-            })
+            # ==========================================
+            # เก็บข้อความเหมือนโค้ดเดิมของคุณ
+            # จากเดิม:
+            # กอ#1 12500 pixel (x=100, y=200)
+            #
+            # เปลี่ยนเป็น:
+            # กอ#1 5.00 ตารางเมตร (x=100, y=200)
+            # ==========================================
+            output_text.append(
+                f"กอ#{i+1} {area_m2:.2f} ตารางเมตร (x={cx}, y={cy})"
+            )
 
-            # 6) สร้าง Bounding Box จาก Mask
+            # สร้าง Bounding Box จาก Mask
             contours, _ = cv2.findContours(
                 binary.astype('uint8'),
                 cv2.RETR_EXTERNAL,
@@ -171,7 +159,7 @@ def detect(frame):
                     2
                 )
 
-            # 7) วาดจุด centroid
+            # วาด centroid สีแดง
             cv2.circle(
                 frame,
                 (cx, cy),
@@ -180,31 +168,34 @@ def detect(frame):
                 -1
             )
 
-            # 8) แสดงเฉพาะหมายเลขกอ (ไม่มีขนาดบนภาพ)
+            # แสดงหมายเลขกอ (ไม่มีขนาดบนภาพ)
             cv2.putText(
                 frame,
                 str(i + 1),
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
+                0.7,
                 (0, 0, 255),
                 2
             )
 
-    return frame, result_data
+    # คืนค่าเหมือนโค้ดเดิมของคุณ
+    # frame = ภาพผลลัพธ์
+    # output_text = รายการข้อความแต่ละกอ
+    return frame, output_text
 
 
-# ==========================================================
+# =========================
 # ส่วนหัวเว็บ
-# ==========================================================
+# =========================
 st.markdown("""
 <div class="main-title">🌿 Phak Top Chawa Detector</div>
 <div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>
 """, unsafe_allow_html=True)
 
-# ==========================================================
+# =========================
 # อัปโหลดไฟล์
-# ==========================================================
+# =========================
 st.markdown('<div class="custom-box">', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพเพื่อตรวจจับกอผักตบชวา")
 
@@ -216,9 +207,9 @@ uploaded_file = st.file_uploader(
 analyze = st.button("🔍 วิเคราะห์ภาพ")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ==========================================================
+# =========================
 # วิเคราะห์ภาพ
-# ==========================================================
+# =========================
 if uploaded_file is not None and analyze:
     with st.spinner("กำลังวิเคราะห์ภาพ..."):
 
@@ -230,55 +221,44 @@ if uploaded_file is not None and analyze:
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
         # ตรวจจับ
-        result_frame, result_data = detect(frame)
+        result_frame, texts = detect(frame)
 
         # BGR -> RGB
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        # ==================================================
-        # รายละเอียดแต่ละกอ (ไม่มีพื้นที่รวม)
-        # ==================================================
-        st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-        st.subheader("📊 ผลการตรวจจับ")
+        # =========================
+        # รายละเอียดแต่ละกอ
+        # แสดงรูปแบบเดียวกับโค้ดเดิม
+        # เช่น กอ#1 5.20 ตารางเมตร (x=123, y=456)
+        # =========================
+        if texts:
+            st.markdown('<div class="custom-box">', unsafe_allow_html=True)
+            st.subheader("📋 รายละเอียดแต่ละกอ")
 
-        if result_data:
-            for item in result_data:
-                st.markdown(
-                    f"""
-                    <div style="
-                        background:#f8fff8;
-                        padding:15px 20px;
-                        margin-bottom:12px;
-                        border-left:5px solid #2e7d32;
-                        border-radius:8px;
-                    ">
-                        <b>กอที่ {item['id']}</b><br>
-                        พื้นที่: <b>{item['area_m2']:.2f}</b> ตารางเมตร<br>
-                        จำนวนพิกเซล: <b>{item['pixels']:,}</b> pixels<br>
-                        ตำแหน่ง centroid: ({item['x']}, {item['y']})
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+            for t in texts:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <b>{t}</b>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.warning("ไม่พบกอผักตบชวาในภาพ")
 
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # ==================================================
+        # =========================
         # แสดงภาพผลลัพธ์
-        # (บนภาพมีเฉพาะกรอบ + หมายเลขกอ ไม่มีข้อความขนาด)
-        # ==================================================
+        # =========================
         st.markdown('<div class="custom-box">', unsafe_allow_html=True)
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ==========================================================
+# =========================
 # Footer
-# ==========================================================
+# =========================
 st.markdown("""
-<div class="footer">
+<div style="text-align:center; color:#2e7d32; margin-top:40px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
     ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา
 </div>
