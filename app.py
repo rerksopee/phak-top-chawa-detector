@@ -19,50 +19,37 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* =======================
+/* =========================
    BACKGROUND
-======================= */
+========================= */
 .stApp {
     background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
 }
 
-/* =======================
-   FORCE TEXT COLOR ALL STREAMLIT
-======================= */
-* {
+/* =========================
+   TEXT FIX (เฉพาะ Streamlit content)
+========================= */
+.stMarkdown p,
+.stMarkdown span,
+.stText,
+.stSubheader,
+.stHeader {
     color: #1b5e20 !important;
 }
 
-/* ยกเว้นปุ่ม */
-button {
-    color: white !important;
-}
-
-/* =======================
-   STREAMLIT SPECIFIC FIX
-======================= */
-.stMarkdown, .stText, .stSubheader, .stHeader {
+/* label ของ uploader */
+label {
     color: #1b5e20 !important;
 }
 
-/* file uploader text */
+/* file uploader */
 .stFileUploader * {
     color: #1b5e20 !important;
 }
 
-/* label / help text */
-label, span, p {
-    color: #1b5e20 !important;
-}
-
-/* input box */
-input {
-    color: #1b5e20 !important;
-}
-
-/* =======================
-   TITLE CARD
-======================= */
+/* =========================
+   TITLE
+========================= */
 .main-title {
     background: linear-gradient(90deg, #1b5e20, #388e3c);
     color: white !important;
@@ -74,7 +61,7 @@ input {
     margin-bottom: 10px;
 }
 
-/* subtitle override */
+/* subtitle */
 .sub-title {
     text-align: center;
     color: #1b5e20 !important;
