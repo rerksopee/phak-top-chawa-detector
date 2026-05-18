@@ -178,7 +178,7 @@ def detect(frame):
 # UI HEADER
 # =========================
 st.markdown("""
-<div class="main-title">🌿 Phak Top Chawa Detector</div>
+<div class="main-title">🌿 Phak Top Chawa </div>
 <div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>
 """, unsafe_allow_html=True)
 
@@ -194,7 +194,7 @@ uploaded_file = st.file_uploader(
     type=["jpg", "jpeg", "png"]
 )
 
-analyze = st.button("🔍 วิเคราะห์ภาพ")
+analyze = st.button("Upload")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
