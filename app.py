@@ -158,7 +158,7 @@ def detect(frame):
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (255, 0, 0),
-                1
+                2
             )
 
     return frame, output_text
