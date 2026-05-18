@@ -51,14 +51,6 @@ st.markdown("""
     border: 1px solid #dcefd8;
 }
 
-.metric-card {
-    background: #f6fff4;
-    border: 1px solid #d7ecd1;
-    border-radius: 18px;
-    padding: 20px;
-    margin-bottom: 12px;
-}
-
 .stButton > button {
     background: linear-gradient(90deg, #2e7d32, #43a047);
     color: white;
@@ -97,49 +89,49 @@ PIXELS_PER_SQUARE_METER = 2500.0
 # ฟังก์ชันตรวจจับ
 # =========================
 def detect(frame):
+    # รันโมเดล
     results = model(frame, conf=0.3, iou=0.4)
 
-    # เก็บผลลัพธ์ในรูปแบบเดียวกับโค้ดเดิม
+    # เก็บผลลัพธ์ข้อความ (รูปแบบเดียวกับโค้ดเดิม)
     output_text = []
 
+    # ถ้ามี segmentation mask
     if results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
 
+        # วนลูปทีละกอ
         for i, mask in enumerate(masks):
 
-            # ปรับขนาด mask ให้ตรงกับภาพ
+            # 1) ปรับขนาด mask ให้เท่ากับภาพต้นฉบับ
             mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
 
-            # แปลงเป็น Binary Image
+            # 2) แปลงเป็น Binary Image
             binary = (mask > 0.5)
 
-            # คำนวณพื้นที่จริง (pixel)
+            # 3) คำนวณพื้นที่ (pixel)
             area_pixels = int(binary.sum())
 
-            # แปลงเป็นตารางเมตร
+            # 4) แปลงเป็นตารางเมตร
             area_m2 = area_pixels / PIXELS_PER_SQUARE_METER
 
-            # หา centroid
+            # 5) หา centroid
             ys, xs = np.where(binary)
+
+            # ถ้าไม่มี pixel ให้ข้าม
             if len(xs) == 0 or len(ys) == 0:
                 continue
 
             cx = int(xs.mean())
             cy = int(ys.mean())
 
-            # ==========================================
-            # เก็บข้อความเหมือนโค้ดเดิมของคุณ
-            # จากเดิม:
-            # กอ#1 12500 pixel (x=100, y=200)
-            #
-            # เปลี่ยนเป็น:
-            # กอ#1 5.00 ตารางเมตร (x=100, y=200)
-            # ==========================================
+            # 6) เก็บข้อความผลลัพธ์
+            # รูปแบบเหมือนโค้ดเดิม:
+            # กอ#1 12.34 ตารางเมตร (x=123, y=456)
             output_text.append(
                 f"กอ#{i+1} {area_m2:.2f} ตารางเมตร (x={cx}, y={cy})"
             )
 
-            # สร้าง Bounding Box จาก Mask
+            # 7) สร้าง Bounding Box จาก Mask
             contours, _ = cv2.findContours(
                 binary.astype('uint8'),
                 cv2.RETR_EXTERNAL,
@@ -147,7 +139,10 @@ def detect(frame):
             )
 
             if contours:
+                # เลือก contour ที่มีพื้นที่มากที่สุด
                 cnt = max(contours, key=cv2.contourArea)
+
+                # หา Bounding Box
                 x, y, w, h = cv2.boundingRect(cnt)
 
                 # วาดกรอบสีเขียว
@@ -159,7 +154,7 @@ def detect(frame):
                     2
                 )
 
-            # วาด centroid สีแดง
+            # 8) วาดจุด centroid สีแดง
             cv2.circle(
                 frame,
                 (cx, cy),
@@ -168,7 +163,7 @@ def detect(frame):
                 -1
             )
 
-            # แสดงหมายเลขกอ (ไม่มีขนาดบนภาพ)
+            # 9) แสดงหมายเลขกอ (ไม่มีขนาดบนภาพ)
             cv2.putText(
                 frame,
                 str(i + 1),
@@ -179,9 +174,7 @@ def detect(frame):
                 2
             )
 
-    # คืนค่าเหมือนโค้ดเดิมของคุณ
-    # frame = ภาพผลลัพธ์
-    # output_text = รายการข้อความแต่ละกอ
+    # คืนค่าเหมือนโค้ดเดิม
     return frame, output_text
 
 
@@ -197,6 +190,7 @@ st.markdown("""
 # อัปโหลดไฟล์
 # =========================
 st.markdown('<div class="custom-box">', unsafe_allow_html=True)
+
 st.subheader("📤 อัปโหลดรูปภาพเพื่อตรวจจับกอผักตบชวา")
 
 uploaded_file = st.file_uploader(
@@ -205,6 +199,7 @@ uploaded_file = st.file_uploader(
 )
 
 analyze = st.button("🔍 วิเคราะห์ภาพ")
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
@@ -228,21 +223,19 @@ if uploaded_file is not None and analyze:
 
         # =========================
         # รายละเอียดแต่ละกอ
-        # แสดงรูปแบบเดียวกับโค้ดเดิม
-        # เช่น กอ#1 5.20 ตารางเมตร (x=123, y=456)
+        # แสดงเป็นคนละบรรทัดธรรมดา
+        # ไม่มีกรอบแยกแต่ละกอ
         # =========================
-       # ===== รายละเอียดแต่ละกอ =====
-# แสดงผลเป็นคนละบรรทัดธรรมดา ไม่มีกรอบแยกแต่ละกอ
-if texts:
-    st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-    st.subheader("📋 รายละเอียดแต่ละกอ")
+        st.markdown('<div class="custom-box">', unsafe_allow_html=True)
+        st.subheader("📋 รายละเอียดแต่ละกอ")
 
-    for t in texts:
-        st.write(t)   # แสดงคนละบรรทัดธรรมดา
-
-    st.markdown('</div>', unsafe_allow_html=True)
+        if texts:
+            for t in texts:
+                st.write(t)   # คนละบรรทัดธรรมดา
         else:
             st.warning("ไม่พบกอผักตบชวาในภาพ")
+
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # =========================
         # แสดงภาพผลลัพธ์
