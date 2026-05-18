@@ -8,7 +8,7 @@ from PIL import Image
 # ตั้งค่าหน้าเว็บ
 # =========================
 st.set_page_config(
-    page_title="Phak Top Chawa Detector",
+    page_title="Phak Top Chawa ",
     page_icon="🌿",
     layout="centered"
 )
@@ -167,7 +167,7 @@ def detect(frame):
                 str(i + 1),
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.7,
                 (255, 0, 0),
                 2
             )
