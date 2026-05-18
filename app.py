@@ -20,32 +20,64 @@ st.markdown("""
 <style>
 
 /* =========================
-   FIX FILE UPLOADER TEXT (IMPORTANT)
+   BACKGROUND
 ========================= */
-div[data-testid="stFileUploader"] section {
-    background-color: white !important;
-    border-radius: 12px;
+.stApp {
+    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
 }
 
-/* label "อัปโหลดไฟล์" */
-div[data-testid="stFileUploader"] label {
-    color: #1b5e20 !important;
-    font-weight: 600 !important;
-}
-
-/* text inside uploader (drag & drop text) */
-div[data-testid="stFileUploader"] span {
-    color: #1b5e20 !important;
-}
-
-/* help text */
-div[data-testid="stFileUploader"] small {
+/* =========================
+   TEXT FIX (เฉพาะ Streamlit content)
+========================= */
+.stMarkdown p,
+.stMarkdown span,
+.stText,
+.stSubheader,
+.stHeader {
     color: #1b5e20 !important;
 }
 
-/* button text inside uploader */
-div[data-testid="stFileUploader"] button {
+/* label ของ uploader */
+label {
     color: #1b5e20 !important;
+}
+
+/* file uploader */
+.stFileUploader * {
+    color: #1b5e20 !important;
+}
+
+/* =========================
+   TITLE
+========================= */
+.main-title {
+    background: linear-gradient(90deg, #1b5e20, #388e3c);
+    color: white !important;
+    padding: 24px;
+    border-radius: 20px;
+    text-align: center;
+    font-size: 42px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+/* subtitle */
+.sub-title {
+    text-align: center;
+    color: #1b5e20 !important;
+    font-size: 20px;
+    margin-bottom: 30px;
+    font-weight: 500;
+}
+
+/* box */
+.custom-box {
+    background: white;
+    padding: 28px;
+    border-radius: 22px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    margin-bottom: 24px;
+    border: 1px solid #dcefd8;
 }
 
 </style>
