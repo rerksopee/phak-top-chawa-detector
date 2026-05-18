@@ -151,14 +151,14 @@ def detect(frame):
                     (x, y),
                     (x + w, y + h),
                     (0, 255, 0),
-                    2
+                    1
                 )
 
             # 8) วาดจุด centroid 
             cv2.circle(
                 frame,
                 (cx, cy),
-                4,
+                1,
                 (255, 0, 0),
                 -1
             )
@@ -171,7 +171,7 @@ def detect(frame):
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (0, 0, 255),
-                2
+                1
             )
 
     # คืนค่าเหมือนโค้ดเดิม
