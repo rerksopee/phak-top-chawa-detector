@@ -154,23 +154,23 @@ def detect(frame):
                     2
                 )
 
-            # 8) วาดจุด centroid สีแดง
+            # 8) วาดจุด centroid 
             cv2.circle(
                 frame,
                 (cx, cy),
                 4,
-                (0, 0, 255),
+                (255, 0, 0),
                 -1
             )
 
-            # 9) แสดงหมายเลขกอ (ไม่มีขนาดบนภาพ)
+            # 9) แสดงหมายเลขกอ 
             cv2.putText(
                 frame,
                 str(i + 1),
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
-                (255, 0, 0),
+                (0, 0, 255),
                 2
             )
 
