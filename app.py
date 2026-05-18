@@ -112,7 +112,7 @@ def detect(frame):
             area_pixels = int(binary.sum())
 
             # 4) แปลงเป็นตารางเมตร
-            area_m2 = area_pixels / PIXELS_PER_SQUARE_METER
+         #  area_m2 = area_pixels / PIXELS_PER_SQUARE_METER
 
             # 5) หา centroid
             ys, xs = np.where(binary)
@@ -128,7 +128,7 @@ def detect(frame):
             # รูปแบบเหมือนโค้ดเดิม:
             # กอ#1 12.34 ตารางเมตร (x=123, y=456)
             output_text.append(
-                f"กอ#{i+1} {area_m2:.2f} ตารางเมตร (x={cx}, y={cy})"
+                f"กอ#{i+1} {area} pixel (x={cx}, y={cy})"
             )
 
             # 7) สร้าง Bounding Box จาก Mask
