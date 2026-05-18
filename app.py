@@ -7,72 +7,103 @@ from PIL import Image
 # =========================
 # ตั้งค่าหน้าเว็บ
 # =========================
-st.set_page_config(
-    page_title="Phak Top Chawa Detector",
-    page_icon="🌿",
-    layout="centered"
-)
-
 # =========================
-# CSS ตกแต่งเว็บ
+# CSS ตกแต่งเว็บ (สไตล์เรียบง่าย โทนสีเขียว)
+# ให้นำส่วนนี้ไปแทน st.markdown("""<style>...</style>""", unsafe_allow_html=True)
 # =========================
 st.markdown("""
 <style>
+/* พื้นหลังเว็บ */
 .stApp {
-    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
+    background-color: #f4f8f2;
 }
 
+/* หัวข้อหลัก */
 .main-title {
-    background: linear-gradient(90deg, #1b5e20, #388e3c);
-    color: white;
-    padding: 24px;
-    border-radius: 20px;
     text-align: center;
     font-size: 42px;
-    font-weight: 700;
+    font-weight: bold;
+    color: #1b5e20;
+    margin-top: 20px;
     margin-bottom: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 
+/* คำอธิบายใต้หัวข้อ */
 .sub-title {
     text-align: center;
-    color: #2e7d32;
     font-size: 20px;
+    color: #2e7d32;
     margin-bottom: 30px;
-    font-weight: 500;
 }
 
+/* กล่องหลัก */
 .custom-box {
-    background: white;
-    padding: 28px;
-    border-radius: 22px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-    margin-bottom: 24px;
-    border: 1px solid #dcefd8;
+    background-color: #ffffff;
+    border: 2px solid #c8e6c9;
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 25px;
 }
 
+/* กล่องผลลัพธ์ */
+.result-box {
+    background-color: #f8fff8;
+    border: 2px solid #dcedc8;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+/* กล่องตัวเลข */
 .metric-card {
-    background: #f6fff4;
-    border: 1px solid #d7ecd1;
-    border-radius: 18px;
+    background-color: #e8f5e9;
+    border: 1px solid #c8e6c9;
+    border-radius: 10px;
     padding: 20px;
     text-align: center;
 }
 
+/* ปุ่ม */
 .stButton > button {
-    background: linear-gradient(90deg, #2e7d32, #43a047);
+    background-color: #2e7d32;
     color: white;
     font-size: 20px;
     font-weight: bold;
-    border-radius: 12px;
-    padding: 12px 24px;
     border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
     width: 100%;
 }
 
+/* ปุ่มเมื่อเอาเมาส์ชี้ */
 .stButton > button:hover {
-    background: linear-gradient(90deg, #1b5e20, #2e7d32);
+    background-color: #1b5e20;
     color: white;
+}
+
+/* File uploader */
+section[data-testid="stFileUploader"] {
+    border: 2px dashed #81c784;
+    border-radius: 10px;
+    padding: 15px;
+    background-color: #f9fff9;
+}
+
+/* เส้นแบ่ง */
+hr {
+    border: none;
+    border-top: 2px solid #c8e6c9;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+/* Footer */
+.footer {
+    text-align: center;
+    color: #2e7d32;
+    margin-top: 40px;
+    padding: 20px;
+    font-size: 14px;
 }
 </style>
 """, unsafe_allow_html=True)
