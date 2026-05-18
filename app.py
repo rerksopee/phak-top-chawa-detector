@@ -19,17 +19,50 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* พื้นหลัง */
+/* =======================
+   BACKGROUND
+======================= */
 .stApp {
     background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
 }
 
-/* 🔥 บังคับสีตัวหนังสือทั้งระบบ */
-html, body, [class*="css"] {
+/* =======================
+   FORCE TEXT COLOR ALL STREAMLIT
+======================= */
+* {
     color: #1b5e20 !important;
 }
 
-/* title */
+/* ยกเว้นปุ่ม */
+button {
+    color: white !important;
+}
+
+/* =======================
+   STREAMLIT SPECIFIC FIX
+======================= */
+.stMarkdown, .stText, .stSubheader, .stHeader {
+    color: #1b5e20 !important;
+}
+
+/* file uploader text */
+.stFileUploader * {
+    color: #1b5e20 !important;
+}
+
+/* label / help text */
+label, span, p {
+    color: #1b5e20 !important;
+}
+
+/* input box */
+input {
+    color: #1b5e20 !important;
+}
+
+/* =======================
+   TITLE CARD
+======================= */
 .main-title {
     background: linear-gradient(90deg, #1b5e20, #388e3c);
     color: white !important;
@@ -39,10 +72,9 @@ html, body, [class*="css"] {
     font-size: 42px;
     font-weight: 700;
     margin-bottom: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 
-/* subtitle */
+/* subtitle override */
 .sub-title {
     text-align: center;
     color: #1b5e20 !important;
@@ -51,7 +83,7 @@ html, body, [class*="css"] {
     font-weight: 500;
 }
 
-/* กล่อง */
+/* box */
 .custom-box {
     background: white;
     padding: 28px;
@@ -59,29 +91,6 @@ html, body, [class*="css"] {
     box-shadow: 0 10px 30px rgba(0,0,0,0.08);
     margin-bottom: 24px;
     border: 1px solid #dcefd8;
-    color: #1b5e20 !important;
-}
-
-/* ปุ่ม */
-.stButton > button {
-    background: linear-gradient(90deg, #2e7d32, #43a047);
-    color: white !important;
-    font-size: 20px;
-    font-weight: bold;
-    border-radius: 12px;
-    padding: 12px 24px;
-    border: none;
-    width: 100%;
-}
-
-.stButton > button:hover {
-    background: linear-gradient(90deg, #1b5e20, #2e7d32);
-    color: white !important;
-}
-
-/* file uploader text */
-.stFileUploader label {
-    color: #1b5e20 !important;
 }
 
 </style>
