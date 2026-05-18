@@ -159,8 +159,8 @@ def detect(frame):
                 frame,
                 (cx, cy),
                 1,
-                (255, 0, 0),
-                1
+                (0, 0, 255),
+                2
             )
 
             # 9) แสดงหมายเลขกอ 
@@ -169,8 +169,8 @@ def detect(frame):
                 str(i + 1),
                 (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.2,
-                (0, 0, 255),
+                0.4,
+                (255, 0, 0),
                 1
             )
 
