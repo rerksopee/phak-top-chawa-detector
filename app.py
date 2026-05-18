@@ -20,35 +20,41 @@ st.markdown("""
 <style>
 
 /* =========================
-   BACKGROUND
+   BASE BACKGROUND
 ========================= */
 .stApp {
     background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
 }
 
 /* =========================
-   TEXT FIX (เฉพาะ Streamlit content)
+   FORCE STREAMLIT TEXT (SAFE VERSION)
 ========================= */
-.stMarkdown p,
-.stMarkdown span,
-.stText,
-.stSubheader,
-.stHeader {
+div[data-testid="stMarkdown"] p,
+div[data-testid="stMarkdown"] span,
+div[data-testid="stText"],
+div[data-testid="stSubheader"],
+div[data-testid="stHeader"],
+div[data-testid="stCaption"] {
     color: #1b5e20 !important;
 }
 
-/* label ของ uploader */
+/* labels */
 label {
     color: #1b5e20 !important;
 }
 
 /* file uploader */
-.stFileUploader * {
+div[data-testid="stFileUploader"] * {
+    color: #1b5e20 !important;
+}
+
+/* input box */
+input {
     color: #1b5e20 !important;
 }
 
 /* =========================
-   TITLE
+   TITLE CARD
 ========================= */
 .main-title {
     background: linear-gradient(90deg, #1b5e20, #388e3c);
@@ -78,6 +84,13 @@ label {
     box-shadow: 0 10px 30px rgba(0,0,0,0.08);
     margin-bottom: 24px;
     border: 1px solid #dcefd8;
+}
+
+/* button */
+.stButton > button {
+    background: linear-gradient(90deg, #2e7d32, #43a047);
+    color: white !important;
+    border-radius: 12px;
 }
 
 </style>
