@@ -231,18 +231,16 @@ if uploaded_file is not None and analyze:
         # แสดงรูปแบบเดียวกับโค้ดเดิม
         # เช่น กอ#1 5.20 ตารางเมตร (x=123, y=456)
         # =========================
-        if texts:
-            st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-            st.subheader("📋 รายละเอียดแต่ละกอ")
+       # ===== รายละเอียดแต่ละกอ =====
+# แสดงผลเป็นคนละบรรทัดธรรมดา ไม่มีกรอบแยกแต่ละกอ
+if texts:
+    st.markdown('<div class="custom-box">', unsafe_allow_html=True)
+    st.subheader("📋 รายละเอียดแต่ละกอ")
 
-            for t in texts:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <b>{t}</b>
-                </div>
-                """, unsafe_allow_html=True)
+    for t in texts:
+        st.write(t)   # แสดงคนละบรรทัดธรรมดา
 
-            st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.warning("ไม่พบกอผักตบชวาในภาพ")
 
