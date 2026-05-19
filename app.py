@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (แก้ปัญหาสี และตั้งค่าดีไซน์เส้นขีดแบ่ง)
+# CSS (สร้างเส้นขีดแบ่งบาง ๆ คลีน ๆ สีเขียวเข้ม)
 # =========================
 st.markdown("""
 <style>
@@ -64,21 +64,12 @@ label {
     font-weight: 500;
 }
 
-/* สไตล์สำหรับเส้นขีดแบ่งแนวนอนสีเขียวเข้มบาง ๆ */
+/* เส้นขีดแบ่งแนวนอนบาง ๆ สีเขียวเข้ม */
 .green-divider {
     border: none;
     border-top: 1px solid #1b5e20;
-    margin: 25px 0;
-    opacity: 0.6;
-}
-
-/* ล้างกรอบหรือพื้นหลังที่ไม่จำเป็นออกให้ดูคลีนที่สุด */
-.my-custom-container {
-    background-color: transparent !important;
-    padding: 0px !important;
-    margin-bottom: 10px !important;
-    box-shadow: none !important;
-    border: none !important;
+    margin: 30px 0;
+    opacity: 0.5; /* ปรับให้เส้นดูบางและซอฟต์ลง */
 }
 
 </style>
