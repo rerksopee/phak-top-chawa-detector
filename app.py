@@ -29,8 +29,13 @@ st.markdown("""
 /* =========================
    TEXT
 ========================= */
-html, body, [class*="css"] {
-    color: #1b5e20;
+.stMarkdown p,
+.stMarkdown span,
+.stText,
+.stSubheader,
+.stHeader,
+label {
+    color: #1b5e20 !important;
 }
 
 /* =========================
@@ -47,6 +52,7 @@ html, body, [class*="css"] {
     margin-bottom: 10px;
 }
 
+/* subtitle */
 .sub-title {
     text-align: center;
     color: #1b5e20 !important;
@@ -68,49 +74,37 @@ html, body, [class*="css"] {
 }
 
 /* =========================
-   FILE UPLOADER CLEAN
+   FILE UPLOADER แบบขีด
 ========================= */
 
-/* กล่องหลักทั้งหมด */
-[data-testid="stFileUploader"] {
+/* กล่องหลัก */
+.stFileUploader > div {
     background: transparent !important;
     border: none !important;
-    box-shadow: none !important;
+    padding: 0 !important;
 }
 
-/* กล่อง upload */
+/* เส้นขีด */
 [data-testid="stFileUploaderDropzone"] {
     background: transparent !important;
     border: none !important;
     border-bottom: 3px solid #66bb6a !important;
-    border-radius: 0 !important;
-    min-height: auto !important;
-    padding: 10px 0 !important;
+    border-radius: 0px !important;
+    padding: 20px 0px !important;
 }
 
-/* ลบกล่องขาวด้านใน */
-[data-testid="stFileUploaderDropzone"] > div {
+/* hover */
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-bottom: 3px solid #2e7d32 !important;
     background: transparent !important;
-    padding: 0 !important;
 }
 
-/* ลบกรอบไฟล์ */
-[data-testid="stFileUploaderFile"] {
-    background: transparent !important;
-    border: none !important;
-}
-
-/* ซ่อนข้อความ drag */
-[data-testid="stFileUploaderDropzoneInstructions"] {
-    display: none !important;
-}
-
-/* สีข้อความ */
-.stFileUploader * {
+/* text */
+[data-testid="stFileUploaderDropzone"] * {
     color: #1b5e20 !important;
 }
 
-/* ปุ่ม browse */
+/* browse button */
 .stFileUploader button {
     border-radius: 12px !important;
     border: 1px solid #66bb6a !important;
@@ -119,9 +113,7 @@ html, body, [class*="css"] {
     font-weight: 600 !important;
 }
 
-/* =========================
-   BUTTON
-========================= */
+/* upload button */
 .stButton button {
     width: 100%;
     background: linear-gradient(90deg, #2e7d32, #43a047);
@@ -139,9 +131,7 @@ html, body, [class*="css"] {
     background: linear-gradient(90deg, #1b5e20, #388e3c);
 }
 
-/* =========================
-   IMAGE
-========================= */
+/* image */
 img {
     border-radius: 18px;
 }
@@ -207,6 +197,7 @@ def detect(frame):
                 f"กอ #{i+1} : {area_m2} m²"
             )
 
+            # contour
             contours, _ = cv2.findContours(
                 (binary * 255).astype("uint8"),
                 cv2.RETR_EXTERNAL,
@@ -227,6 +218,7 @@ def detect(frame):
                     2
                 )
 
+            # centroid
             cv2.circle(
                 frame,
                 (cx, cy),
@@ -235,6 +227,7 @@ def detect(frame):
                 2
             )
 
+            # label
             cv2.putText(
                 frame,
                 str(i + 1),
@@ -261,7 +254,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================
-# UPLOAD
+# UPLOAD SECTION
 # =========================
 st.markdown('<div class="custom-box">', unsafe_allow_html=True)
 
