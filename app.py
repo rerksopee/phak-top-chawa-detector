@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (ดักจับตัวแบ่งของระบบและย้อมสีเขียวเข้ม)
+# CSS (แก้ปัญหากล่องขาว บังคับเป็นเส้นตรงสีเขียวเข้มบาง ๆ)
 # =========================
 st.markdown("""
 <style>
@@ -64,12 +64,18 @@ label {
     font-weight: 500;
 }
 
-/* 🔥 บังคับเส้นแบ่งของระบบ (hr) ให้เป็นเส้นตรง 1px สีเขียวเข้มชัวร์ๆ */
-hr {
+/* 🔥 บังคับล้างเอฟเฟกต์กล่องขาวทิ้ง และวาดเส้นตรงบางเฉียบสีเขียวเข้มแทน */
+.stElementContainer hr, 
+hr, 
+[data-testid="stHorizontalBlock"] hr {
     border: none !important;
-    border-top: 1px solid #1b5e20 !important;
+    border-top: 1px solid #1b5e20 !important; /* เส้นตรงบาง 1px สีเขียวเข้ม */
+    background-color: transparent !important;
+    height: 1px !important;
     margin: 25px 0 !important;
-    opacity: 1.0 !important;
+    padding: 0 !important;
+    display: block !important;
+    box-shadow: none !important;
 }
 
 </style>
