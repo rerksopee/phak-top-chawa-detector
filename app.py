@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (แก้ไขแบบถอนรากถอนโคน)
+# CSS (แก้ไขแบบถอนรากถอนโคน และปรับเป็นเส้นขีดเขียวเข้ม)
 # =========================
 st.markdown("""
 <style>
@@ -64,14 +64,15 @@ label {
     font-weight: 500;
 }
 
-/* box (กำหนดคลาสให้ชัดเจน ไม่ให้ไปเอฟเฟกต์กับ Element อื่นของ Streamlit) */
+/* box (ปรับเป็นเส้นขีดเขียวเข้มdashed) */
 .my-custom-container {
     background-color: white !important;
     padding: 28px !important;
     border-radius: 22px !important;
     box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important;
     margin-bottom: 24px !important;
-    border: 1px solid #dcefd8 !important;
+    /* เปลี่ยน solid เป็น dashed และใช้สีเขียวเข้ม */
+    border: 3px dashed #1b5e20 !important; 
 }
 
 </style>
