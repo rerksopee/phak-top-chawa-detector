@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (เวอร์ชันคลีนสุดๆ ลบเส้นขีด และลบกรอบขาวทั้งหมด)
+# CSS (เนรมิตช่องลมให้เป็นเส้นประสีเขียวเข้มบางๆ)
 # =========================
 st.markdown("""
 <style>
@@ -59,11 +59,20 @@ h1, h2, h3 {
     text-align: center;
     color: #1b5e20 !important;
     font-size: 20px;
-    margin-bottom: 35px; /* เว้นระยะห่างด้านล่างแทนเส้นคั่น */
+    margin-bottom: 20px;
     font-weight: 500;
 }
 
-/* FILE UPLOADER DESIGN (เนียนตา ไม่บวมขาว) */
+/* 🎯 เปลี่ยนช่องลมระบบให้กลายเป็น "เส้นประสีเขียวเข้มบางๆ" */
+.dashed-line {
+    width: 100%;
+    border-top: 1px dashed #1b5e20 !important;
+    margin-top: 25px !important;
+    margin-bottom: 25px !important;
+    display: block !important;
+}
+
+/* FILE UPLOADER DESIGN */
 [data-testid="stFileUploaderDropzone"] {
     background: rgba(255, 255, 255, 0.25) !important;
     border: 1px dashed #1b5e20 !important;
@@ -98,7 +107,6 @@ h1, h2, h3 {
     font-size: 18px !important;
     font-weight: 700 !important;
     transition: 0.3s;
-    margin-top: 10px;
 }
 
 .stButton button:hover {
@@ -110,7 +118,7 @@ h1, h2, h3 {
     );
 }
 
-/* ซ่อนเส้นใต้หรืองานขีดคั่นของระบบที่อาจหลงเหลือ */
+/* ลบเส้นทึบเดิมของระบบทิ้งป้องกันการตีกัน */
 hr {
     display: none !important;
 }
@@ -118,11 +126,6 @@ hr {
 /* RESULT IMAGE */
 img {
     border-radius: 20px;
-}
-
-/* เพิ่มช่องไฟระหว่างเซกชันเพื่อความสบายตา */
-.element-container {
-    margin-bottom: 15px !important;
 }
 
 </style>
