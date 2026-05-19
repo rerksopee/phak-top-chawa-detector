@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (แก้ปัญหาสีใน system/dark mode และปรับดีไซน์)
+# CSS (แก้ปัญหาสีใน system/dark mode)
 # =========================
 st.markdown("""
 <style>
@@ -58,7 +58,7 @@ label {
     text-align: center;
     font-size: 42px;
     font-weight: 700;
-    margin-bottom: 30px; /* เพิ่มระยะห่างด้านล่างแทนการใช้กล่องเปล่า */
+    margin-bottom: 10px;
 }
 
 /* subtitle */
@@ -70,7 +70,7 @@ label {
     font-weight: 500;
 }
 
-/* box (ปรับให้เรียบร้อย ไม่ซ้อนกันเกะกะ) */
+/* box */
 .custom-box {
     background: white;
     padding: 28px;
