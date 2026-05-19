@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (บังคับแต่งธีม และล้างกล่องขาวส่วนเกิน)
+# CSS (สำหรับย้อมสีข้อความหลัก)
 # =========================
 st.markdown("""
 <style>
@@ -64,25 +64,14 @@ label {
     font-weight: 500;
 }
 
-/* 🔥 ล้างกล่องขาวเปล่าๆ ของระบบที่แอบมาครอบเส้นทิ้งไปให้หมด */
-[data-testid="stVerticalBlock"] > div:has(div.stMarkdown) {
-    background: transparent !important;
-    box-shadow: none !important;
-    border: none !important;
-    padding: 0 !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# ฟังก์ชันบังคับวาดเส้นตรงสีเขียวเข้ม แบบไม่พึ่งระบบ (หนา 1px คลีนๆ)
+# ฟังก์ชันสร้างเส้นขีดตรงบางเฉียบสีเขียวเข้มด้วยตัวอักษร (ไม่โดนระบบบล็อกชัวร์)
 # =========================
-def force_green_line():
-    st.markdown(
-        '<div style="border-top: 1px solid #1b5e20; width: 100%; margin: 30px 0; display: block; clear: both;"></div>', 
-        unsafe_allow_html=True
-    )
+def show_divider_line():
+    st.write("─────────────────────────────────────────────────────────────────")
 # =========================
 # โหลดโมเดล
 # =========================
