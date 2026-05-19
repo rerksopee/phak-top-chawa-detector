@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (แก้ปัญหากล่องขาว บังคับเป็นเส้นตรงสีเขียวเข้มบาง ๆ)
+# CSS (บังคับแต่งธีม และล้างกล่องขาวส่วนเกิน)
 # =========================
 st.markdown("""
 <style>
@@ -64,22 +64,25 @@ label {
     font-weight: 500;
 }
 
-/* 🔥 บังคับล้างเอฟเฟกต์กล่องขาวทิ้ง และวาดเส้นตรงบางเฉียบสีเขียวเข้มแทน */
-.stElementContainer hr, 
-hr, 
-[data-testid="stHorizontalBlock"] hr {
-    border: none !important;
-    border-top: 1px solid #1b5e20 !important; /* เส้นตรงบาง 1px สีเขียวเข้ม */
-    background-color: transparent !important;
-    height: 1px !important;
-    margin: 25px 0 !important;
-    padding: 0 !important;
-    display: block !important;
+/* 🔥 ล้างกล่องขาวเปล่าๆ ของระบบที่แอบมาครอบเส้นทิ้งไปให้หมด */
+[data-testid="stVerticalBlock"] > div:has(div.stMarkdown) {
+    background: transparent !important;
     box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
 }
 
 </style>
 """, unsafe_allow_html=True)
+
+# =========================
+# ฟังก์ชันบังคับวาดเส้นตรงสีเขียวเข้ม แบบไม่พึ่งระบบ (หนา 1px คลีนๆ)
+# =========================
+def force_green_line():
+    st.markdown(
+        '<div style="border-top: 1px solid #1b5e20; width: 100%; margin: 30px 0; display: block; clear: both;"></div>', 
+        unsafe_allow_html=True
+    )
 # =========================
 # โหลดโมเดล
 # =========================
