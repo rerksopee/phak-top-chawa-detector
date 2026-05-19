@@ -14,175 +14,108 @@ st.set_page_config(
 )
 
 # =========================
-# CSS
+# CSS (ลบกรอบขาวทั้งหมด คืนพื้นหลังคลีนๆ พร้อมเส้นขีดเขียว)
 # =========================
 st.markdown("""
 <style>
 
-/* =========================
-   BACKGROUND
-========================= */
+/* BACKGROUND */
 .stApp {
     background: linear-gradient(
         180deg,
         #eef8ec 0%,
-        #f8fff6 100%
+        #f8fff6 100
     ) !important;
 }
 
-/* =========================
-   TEXT
-========================= */
-html, body, [class*="css"] {
-    color: #1b5e20;
+/* TEXT FIX (เน้นเฉพาะจุด ไม่หว่านแหจนบั๊ก) */
+.stMarkdown p, 
+.stMarkdown span, 
+.stText, 
+.stSubheader, 
+.stHeader,
+h1, h2, h3 {
+    color: #1b5e20 !important;
 }
 
-/* =========================
-   TITLE
-========================= */
+/* TITLE */
 .main-title {
-
     background: linear-gradient(
-        10deg,
+        90deg,
         #1b5e20,
         #388e3c
     );
-
-    color: green !important;
-
+    color: white !important;
     padding: 24px;
-
     border-radius: 22px;
-
     text-align: center;
-
     font-size: 42px;
-
     font-weight: 700;
-
     margin-bottom: 12px;
 }
 
-/* =========================
-   SUB TITLE
-========================= */
+/* SUB TITLE */
 .sub-title {
-
     text-align: center;
-
     color: #1b5e20 !important;
-
     font-size: 20px;
-
     margin-bottom: 20px;
-
     font-weight: 500;
 }
 
-/* =========================
-   DIVIDER
-========================= */
+/* 🟢 ขีดเส้นตรงสีเขียวเข้มที่พี่ต้องการ */
 .divider {
-
     width: 100%;
-
     height: 2px;
-
     background: #1b5e20;
-
     border: none;
-
-    margin-top: 28px;
-
-    margin-bottom: 28px;
-
+    margin-top: 25px;
+    margin-bottom: 25px;
     border-radius: 999px;
+    display: block !important;
 }
 
-/* =========================
-   CUSTOM BOX
-========================= */
-.custom-box {
-
-    background: rgba(255,255,255,0.45);
-
-    border-radius: 20px;
-
-    padding: 20px;
-
-    margin-bottom: 20px;
-}
-
-/* =========================
-   FILE UPLOADER
-========================= */
+/* FILE UPLOADER (ปรับพื้นหลังส่วนนี้ให้กลืนกับแอป ไม่บวมเป็นกรอบขาว) */
 [data-testid="stFileUploaderDropzone"] {
-
-    background: rgba(
-        255,
-        255,
-        255,
-        0.45
-    ) !important;
-
-    border: none !important;
-
+    background: rgba(255, 255, 255, 0.2) !important;
+    border: 1px dashed #1b5e20 !important;
     border-radius: 18px !important;
-
     padding: 20px !important;
 }
 
-/* text */
+/* text uploader */
 .stFileUploader * {
     color: #1b5e20 !important;
 }
 
 /* browse button */
 .stFileUploader button {
-
     border-radius: 12px !important;
-
     border: 1px solid #1b5e20 !important;
-
     background: white !important;
-
     color: #1b5e20 !important;
-
     font-weight: 600 !important;
 }
 
-/* =========================
-   BUTTON
-========================= */
+/* BUTTON */
 .stButton button {
-
     width: 100%;
-
     background: linear-gradient(
         90deg,
         #1b5e20,
         #388e3c
     );
-
     color: white !important;
-
     border: none !important;
-
     border-radius: 16px !important;
-
     padding: 12px 28px !important;
-
     font-size: 18px !important;
-
     font-weight: 700 !important;
-
     transition: 0.3s;
 }
 
 .stButton button:hover {
-
     transform: scale(1.02);
-
     background: linear-gradient(
         90deg,
         #14461a,
@@ -190,9 +123,7 @@ html, body, [class*="css"] {
     );
 }
 
-/* =========================
-   IMAGE
-========================= */
+/* IMAGE */
 img {
     border-radius: 20px;
 }
