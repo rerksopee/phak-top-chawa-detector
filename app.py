@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (ธีมสีเขียว สไตล์เรียบหรู คลีนตา)
+# CSS (เวอร์ชันคลีนสุดๆ ลบเส้นขีด และลบกรอบขาวทั้งหมด)
 # =========================
 st.markdown("""
 <style>
@@ -28,7 +28,7 @@ st.markdown("""
     ) !important;
 }
 
-/* TEXT COLOR FIX */
+/* TEXT COLOR */
 .stMarkdown p, 
 .stMarkdown span, 
 .stText, 
@@ -59,13 +59,13 @@ h1, h2, h3 {
     text-align: center;
     color: #1b5e20 !important;
     font-size: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 35px; /* เว้นระยะห่างด้านล่างแทนเส้นคั่น */
     font-weight: 500;
 }
 
-/* FILE UPLOADER DESIGN */
+/* FILE UPLOADER DESIGN (เนียนตา ไม่บวมขาว) */
 [data-testid="stFileUploaderDropzone"] {
-    background: rgba(255, 255, 255, 0.2) !important;
+    background: rgba(255, 255, 255, 0.25) !important;
     border: 1px dashed #1b5e20 !important;
     border-radius: 18px !important;
     padding: 20px !important;
@@ -98,6 +98,7 @@ h1, h2, h3 {
     font-size: 18px !important;
     font-weight: 700 !important;
     transition: 0.3s;
+    margin-top: 10px;
 }
 
 .stButton button:hover {
@@ -109,17 +110,19 @@ h1, h2, h3 {
     );
 }
 
-/* STYLED DIVIDER (ปรับแต่งความเข้มบางของเส้นระบบ) */
+/* ซ่อนเส้นใต้หรืองานขีดคั่นของระบบที่อาจหลงเหลือ */
 hr {
-    border-top: 1px solid #1b5e20 !important;
-    margin-top: 20px !important;
-    margin-bottom: 20px !important;
-    opacity: 1 !important;
+    display: none !important;
 }
 
 /* RESULT IMAGE */
 img {
     border-radius: 20px;
+}
+
+/* เพิ่มช่องไฟระหว่างเซกชันเพื่อความสบายตา */
+.element-container {
+    margin-bottom: 15px !important;
 }
 
 </style>
