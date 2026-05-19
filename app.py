@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (เปลี่ยนช่องว่างเป็นเส้นประสีเขียวเข้มบางๆ)
+# CSS (เวอร์ชันปกติ คลีนสุดๆ ไม่มีขีด ไม่มีช่องลมประดิษฐ์)
 # =========================
 st.markdown("""
 <style>
@@ -63,17 +63,7 @@ h1, h2, h3 {
     font-weight: 500;
 }
 
-/* 🎯 แปลงช่องว่างระบบให้กลายเป็นเส้นประสีเขียวเข้ม */
-.dashed-line {
-    width: 100%;
-    border-top: 1px dashed #1b5e20 !important;
-    margin-top: 30px !important;
-    margin-bottom: 30px !important;
-    display: block !important;
-    clear: both;
-}
-
-/* FILE UPLOADER DESIGN */
+/* FILE UPLOADER DESIGN (ขอบมน เนียนตา ไม่บวมขาว) */
 [data-testid="stFileUploaderDropzone"] {
     background: rgba(255, 255, 255, 0.25) !important;
     border: 1px dashed #1b5e20 !important;
@@ -119,7 +109,7 @@ h1, h2, h3 {
     );
 }
 
-/* ซ่อนเส้นทึบดั้งเดิมเพื่อไม่ให้แสดงซ้อน */
+/* ลบตัวคำสั่งเส้นของระบบทั้งหมดไม่ให้กวนสายตา */
 hr {
     display: none !important;
 }
