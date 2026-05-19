@@ -4,4 +4,4 @@ opencv-python-headless
 numpy
 Pillow
 torch
-lap>=0.5.12
+torchvision
