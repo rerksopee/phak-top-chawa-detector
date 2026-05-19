@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (ปรับสีเส้นแบ่งให้ตรงกับกรอบด้านบนเป๊ะ ๆ)
+# CSS (สร้างเส้นตรงคั่นยาวบาง ๆ สีเขียวเข้ม)
 # =========================
 st.markdown("""
 <style>
@@ -64,11 +64,12 @@ label {
     font-weight: 500;
 }
 
-/* 🔥 เส้นขีดคั่นหนาขึ้นนิดนึง และใช้สีเขียวเข้ม #1b5e20 แบบเดียวกับกรอบหัวเว็บ */
-.green-divider {
-    border: none;
-    border-top: 2px solid #1b5e20;
-    margin: 30px 0;
+/* 🔥 เส้นตรงคั่นยาวบางเฉียบ คลีน ๆ สีเขียวเข้ม */
+.clean-line {
+    border: none !important;
+    border-top: 1px solid #1b5e20 !important; /* หนาแค่ 1px บางสวย */
+    margin: 35px 0 !important;               /* เว้นระยะช่องไฟบน-ล่างให้สมดุล */
+    padding: 0 !important;
 }
 
 </style>
