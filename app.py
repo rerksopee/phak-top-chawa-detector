@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (สร้างเส้นตรงคั่นยาวบาง ๆ สีเขียวเข้ม)
+# CSS (แก้ปัญหาสีข้อความและพื้นหลังระบบ)
 # =========================
 st.markdown("""
 <style>
@@ -64,16 +64,14 @@ label {
     font-weight: 500;
 }
 
-/* 🔥 เส้นตรงคั่นยาวบางเฉียบ คลีน ๆ สีเขียวเข้ม */
-.clean-line {
-    border: none !important;
-    border-top: 1px solid #1b5e20 !important; /* หนาแค่ 1px บางสวย */
-    margin: 35px 0 !important;               /* เว้นระยะช่องไฟบน-ล่างให้สมดุล */
-    padding: 0 !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
+
+# =========================
+# ฟังก์ชันสร้างเส้นตรงบางสีเขียวเข้ม (บังคับวาดผ่าน st.html)
+# =========================
+def draw_green_line():
+    st.html('<div style="border-top: 1px solid #1b5e20; width: 100%; margin: 30px 0; opacity: 0.8;"></div>')
 # =========================
 # โหลดโมเดล
 # =========================
