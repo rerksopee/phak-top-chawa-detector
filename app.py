@@ -100,6 +100,20 @@ html, body, [class*="css"] {
 }
 
 /* =========================
+   CUSTOM BOX
+========================= */
+.custom-box {
+
+    background: rgba(255,255,255,0.45);
+
+    border-radius: 20px;
+
+    padding: 20px;
+
+    margin-bottom: 20px;
+}
+
+/* =========================
    FILE UPLOADER
 ========================= */
 [data-testid="stFileUploaderDropzone"] {
@@ -141,6 +155,8 @@ html, body, [class*="css"] {
    BUTTON
 ========================= */
 .stButton button {
+
+    width: 100%;
 
     background: linear-gradient(
         90deg,
