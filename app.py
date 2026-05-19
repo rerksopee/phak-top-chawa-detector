@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (ปรับเป็นเส้นขีดแบ่งบาง ๆ คลีน ๆ สีเขียวเข้ม)
+# CSS (แก้ปัญหาสี และตั้งค่าดีไซน์เส้นขีดแบ่ง)
 # =========================
 st.markdown("""
 <style>
@@ -60,22 +60,25 @@ label {
     text-align: center;
     color: #1b5e20 !important;
     font-size: 20px;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
     font-weight: 500;
 }
 
-/* ปรับพื้นที่ข้อมูลให้ไม่มีกรอบ แต่เป็นเส้นขีดแบ่งบาง ๆ ด้านล่างแทน */
+/* สไตล์สำหรับเส้นขีดแบ่งแนวนอนสีเขียวเข้มบาง ๆ */
+.green-divider {
+    border: none;
+    border-top: 1px solid #1b5e20;
+    margin: 25px 0;
+    opacity: 0.6;
+}
+
+/* ล้างกรอบหรือพื้นหลังที่ไม่จำเป็นออกให้ดูคลีนที่สุด */
 .my-custom-container {
-    background-color: transparent !important; /* เอาพื้นหลังขาวออก ให้เนียนไปกับเว็บ */
-    padding: 20px 0px !important;            /* ปรับช่องไฟให้พอดี */
-    margin-bottom: 30px !important;
-    box-shadow: none !important;              /* เอาเงาออก */
-    
-    /* สร้างเส้นขีดแบ่งบาง ๆ สีเขียวเข้มไว้ใต้ส่วนนั้น ๆ */
-    border-bottom: 1px solid #1b5e20 !important; 
-    border-top: none !important;
-    border-left: none !important;
-    border-right: none !important;
+    background-color: transparent !important;
+    padding: 0px !important;
+    margin-bottom: 10px !important;
+    box-shadow: none !important;
+    border: none !important;
 }
 
 </style>
