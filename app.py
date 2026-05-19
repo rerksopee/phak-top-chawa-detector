@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (เนรมิตช่องลมให้เป็นเส้นประสีเขียวเข้มบางๆ)
+# CSS (เปลี่ยนช่องว่างเป็นเส้นประสีเขียวเข้มบางๆ)
 # =========================
 st.markdown("""
 <style>
@@ -63,13 +63,14 @@ h1, h2, h3 {
     font-weight: 500;
 }
 
-/* 🎯 เปลี่ยนช่องลมระบบให้กลายเป็น "เส้นประสีเขียวเข้มบางๆ" */
+/* 🎯 แปลงช่องว่างระบบให้กลายเป็นเส้นประสีเขียวเข้ม */
 .dashed-line {
     width: 100%;
     border-top: 1px dashed #1b5e20 !important;
-    margin-top: 25px !important;
-    margin-bottom: 25px !important;
+    margin-top: 30px !important;
+    margin-bottom: 30px !important;
     display: block !important;
+    clear: both;
 }
 
 /* FILE UPLOADER DESIGN */
@@ -118,7 +119,7 @@ h1, h2, h3 {
     );
 }
 
-/* ลบเส้นทึบเดิมของระบบทิ้งป้องกันการตีกัน */
+/* ซ่อนเส้นทึบดั้งเดิมเพื่อไม่ให้แสดงซ้อน */
 hr {
     display: none !important;
 }
