@@ -2,7 +2,7 @@ import streamlit as st
 import cv2
 from ultralytics import YOLO
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 # =========================
 # ตั้งค่าหน้าเว็บ
@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (สำหรับคุมโทนสีพื้นหลังและสีตัวอักษรหลัก)
+# CSS (คุมธีมสีสไตล์เขียวคลีน)
 # =========================
 st.markdown("""
 <style>
@@ -66,6 +66,18 @@ label {
 
 </style>
 """, unsafe_allow_html=True)
+
+# =========================
+# ฟังก์ชันไม้ตาย: วาดภาพเส้นตรงส่งให้ st.image (แก้ปัญหาเส้นหาย 100%)
+# =========================
+def draw_perfect_line():
+    # สร้างรูปภาพโปร่งใสขนาด 800x1 px
+    line_img = Image.new("RGBA", (800, 1), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(line_img)
+    # วาดเส้นตรงสีเขียวเข้ม (#1B5E20) หนา 1px ตั้งแต่ซ้ายสุดไปขวาสุด
+    draw.line([(0, 0), (800, 0)], fill=(27, 94, 32, 255), width=1)
+    # แสดงผลเป็นรูปภาพคั่นหน้าจอ ช่องไฟจะสวยพอดี ไม่โดน CSS บล็อก
+    st.image(line_img, use_container_width=True)
 # =========================
 # โหลดโมเดล
 # =========================
@@ -119,7 +131,7 @@ def detect(frame):
             cy = int(ys.mean())
 
             output_text.append(
-                f"กอ#{i+1} {area_m2} m² (x={cx}, y={cy})"
+                f"กอ#{i+1}   {area_m2} m² (x={cx}, y={cy})"
             )
 
             # contour
