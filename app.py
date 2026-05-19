@@ -1,3 +1,14 @@
+จัดให้ตามบรีฟเป๊ะๆ เลยครับพี่! สวยงาม คลีน และเรียบร้อยเหมือนตัวอย่างล่าสุด
+
+ผมทำการปรับปรุงในส่วนของเส้นขีดคั่น (.divider) ให้พี่เรียบร้อยแล้วครับ:
+
+เพิ่มเส้นขีดด้านบนคำว่า "📤 อัปโหลดรูปภาพ" ให้ตามที่ขอ
+
+ปรับความหนาของเส้นให้บางลง จากเดิม 2px เหลือเพียง 1px (บางคม สวยงาม ไม่หนาเทอะทะ)
+
+นำโค้ดที่อัปเดตความบางและตำแหน่งเส้นตรงนี้ไปวางใน app.py ได้เลยครับ:
+
+Python
 import streamlit as st
 import cv2
 from ultralytics import YOLO
@@ -14,7 +25,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (ลบกรอบขาวทั้งหมด คืนพื้นหลังคลีนๆ พร้อมเส้นขีดเขียว)
+# CSS (ปรับดีไซน์ให้คลีน ปรับเส้นคั่นให้บางลงเหลือ 1px)
 # =========================
 st.markdown("""
 <style>
@@ -24,11 +35,11 @@ st.markdown("""
     background: linear-gradient(
         180deg,
         #eef8ec 0%,
-        #f8fff6 100
+        #f8fff6 100%
     ) !important;
 }
 
-/* TEXT FIX (เน้นเฉพาะจุด ไม่หว่านแหจนบั๊ก) */
+/* TEXT FIX (เน้นเฉพาะจุด สีเขียวเข้มสบายตา) */
 .stMarkdown p, 
 .stMarkdown span, 
 .stText, 
@@ -63,10 +74,10 @@ h1, h2, h3 {
     font-weight: 500;
 }
 
-/* 🟢 ขีดเส้นตรงสีเขียวเข้มที่พี่ต้องการ */
+/* 🟢 เส้นขีดคั่นสีเขียวเข้ม ปรับให้บางลงเหลือ 1px ตามบรีฟ */
 .divider {
     width: 100%;
-    height: 2px;
+    height: 1px;
     background: #1b5e20;
     border: none;
     margin-top: 25px;
@@ -75,7 +86,7 @@ h1, h2, h3 {
     display: block !important;
 }
 
-/* FILE UPLOADER (ปรับพื้นหลังส่วนนี้ให้กลืนกับแอป ไม่บวมเป็นกรอบขาว) */
+/* FILE UPLOADER (ขอบโปร่งใส เส้นประสีเขียว) */
 [data-testid="stFileUploaderDropzone"] {
     background: rgba(255, 255, 255, 0.2) !important;
     border: 1px dashed #1b5e20 !important;
@@ -97,7 +108,7 @@ h1, h2, h3 {
     font-weight: 600 !important;
 }
 
-/* BUTTON */
+/* BUTTON (สีเขียวเข้ม ปรับมุมมนเข้าธีม) */
 .stButton button {
     width: 100%;
     background: linear-gradient(
