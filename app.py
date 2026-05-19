@@ -174,7 +174,7 @@ def detect(frame):
             cy = int(ys.mean())
 
             output_text.append(
-                f"กอ#{i+1}   {area_m2} m² (x={cx}, y={cy})"
+                f"กอ#{i+1}   {area_m2} ตารางเมตร (x={cx}, y={cy})"
             )
 
             # contour
