@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 
 # =========================
-# ตั้งค่าหน้าเว็บ
+# PAGE CONFIG
 # =========================
 st.set_page_config(
     page_title="Phak Top Chawa",
@@ -14,54 +14,163 @@ st.set_page_config(
 )
 
 # =========================
-# CSS คุมธีมพื้นหลังและสีตัวอักษร
+# CSS
 # =========================
 st.markdown("""
 <style>
 
-/* BACKGROUND */
+/* =========================
+   BACKGROUND
+========================= */
 .stApp {
-    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important;
+    background: linear-gradient(
+        180deg,
+        #eef8ec 0%,
+        #f8fff6 100%
+    ) !important;
 }
 
-/* TEXT FIX */
-.stMarkdown p,
-.stMarkdown span,
-.stText,
-.stSubheader,
-.stHeader {
-    color: #1b5e20 !important;
+/* =========================
+   TEXT
+========================= */
+html, body, [class*="css"] {
+    color: #1b5e20;
 }
 
-/* label ของ uploader */
-label {
-    color: #1b5e20 !important;
-}
-
-/* file uploader */
-.stFileUploader * {
-    color: #1b5e20 !important;
-}
-
-/* TITLE */
+/* =========================
+   TITLE
+========================= */
 .main-title {
-    background: linear-gradient(90deg, #1b5e20, #388e3c);
+    background: linear-gradient(
+        90deg,
+        #1b5e20,
+        #388e3c
+    );
+
     color: white !important;
+
     padding: 24px;
-    border-radius: 20px;
+
+    border-radius: 22px;
+
     text-align: center;
+
     font-size: 42px;
+
     font-weight: 700;
-    margin-bottom: 10px;
+
+    margin-bottom: 12px;
 }
 
 /* subtitle */
 .sub-title {
+
     text-align: center;
+
     color: #1b5e20 !important;
+
     font-size: 20px;
+
     margin-bottom: 20px;
+
     font-weight: 500;
+}
+
+/* =========================
+   DIVIDER
+========================= */
+.divider {
+
+    height: 2px;
+
+    background: #1b5e20;
+
+    margin-top: 28px;
+
+    margin-bottom: 28px;
+
+    border-radius: 999px;
+
+    opacity: 0.9;
+}
+
+/* =========================
+   FILE UPLOADER
+========================= */
+
+/* กล่อง upload */
+[data-testid="stFileUploaderDropzone"] {
+
+    background: rgba(255,255,255,0.45) !important;
+
+    border: none !important;
+
+    border-radius: 18px !important;
+
+    padding: 20px !important;
+}
+
+/* text */
+.stFileUploader * {
+    color: #1b5e20 !important;
+}
+
+/* browse button */
+.stFileUploader button {
+
+    border-radius: 12px !important;
+
+    border: 1px solid #1b5e20 !important;
+
+    background: white !important;
+
+    color: #1b5e20 !important;
+
+    font-weight: 600 !important;
+}
+
+/* =========================
+   BUTTON
+========================= */
+.stButton button {
+
+    background: linear-gradient(
+        90deg,
+        #1b5e20,
+        #388e3c
+    );
+
+    color: white !important;
+
+    border: none !important;
+
+    border-radius: 16px !important;
+
+    padding: 12px 28px !important;
+
+    font-size: 18px !important;
+
+    font-weight: 700 !important;
+
+    transition: 0.3s;
+}
+
+.stButton button:hover {
+
+    transform: scale(1.02);
+
+    background: linear-gradient(
+        90deg,
+        #14461a,
+        #2e7d32
+    );
+}
+
+/* =========================
+   IMAGE
+========================= */
+img {
+    border-radius: 20px;
 }
 
 </style>
