@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (ปรับดีไซน์ให้คลีน ปรับเส้นคั่นให้บางลงเหลือ 1px)
+# CSS (ธีมสีเขียว สไตล์เรียบหรู คลีนตา)
 # =========================
 st.markdown("""
 <style>
@@ -28,7 +28,7 @@ st.markdown("""
     ) !important;
 }
 
-/* TEXT FIX (เน้นเฉพาะจุด สีเขียวเข้มสบายตา) */
+/* TEXT COLOR FIX */
 .stMarkdown p, 
 .stMarkdown span, 
 .stText, 
@@ -38,7 +38,7 @@ h1, h2, h3 {
     color: #1b5e20 !important;
 }
 
-/* TITLE */
+/* TITLE BANNER */
 .main-title {
     background: linear-gradient(
         90deg,
@@ -63,19 +63,7 @@ h1, h2, h3 {
     font-weight: 500;
 }
 
-/* 🟢 เส้นขีดคั่นสีเขียวเข้ม ปรับให้บางลงเหลือ 1px ตามบรีฟ */
-.divider {
-    width: 100%;
-    height: 1px;
-    background: #1b5e20;
-    border: none;
-    margin-top: 25px;
-    margin-bottom: 25px;
-    border-radius: 999px;
-    display: block !important;
-}
-
-/* FILE UPLOADER (ขอบโปร่งใส เส้นประสีเขียว) */
+/* FILE UPLOADER DESIGN */
 [data-testid="stFileUploaderDropzone"] {
     background: rgba(255, 255, 255, 0.2) !important;
     border: 1px dashed #1b5e20 !important;
@@ -83,12 +71,10 @@ h1, h2, h3 {
     padding: 20px !important;
 }
 
-/* text uploader */
 .stFileUploader * {
     color: #1b5e20 !important;
 }
 
-/* browse button */
 .stFileUploader button {
     border-radius: 12px !important;
     border: 1px solid #1b5e20 !important;
@@ -97,7 +83,7 @@ h1, h2, h3 {
     font-weight: 600 !important;
 }
 
-/* BUTTON (สีเขียวเข้ม ปรับมุมมนเข้าธีม) */
+/* BUTTON DESIGN */
 .stButton button {
     width: 100%;
     background: linear-gradient(
@@ -123,7 +109,15 @@ h1, h2, h3 {
     );
 }
 
-/* IMAGE */
+/* STYLED DIVIDER (ปรับแต่งความเข้มบางของเส้นระบบ) */
+hr {
+    border-top: 1px solid #1b5e20 !important;
+    margin-top: 20px !important;
+    margin-bottom: 20px !important;
+    opacity: 1 !important;
+}
+
+/* RESULT IMAGE */
 img {
     border-radius: 20px;
 }
