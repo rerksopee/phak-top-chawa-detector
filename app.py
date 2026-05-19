@@ -8,7 +8,7 @@ from PIL import Image
 # ตั้งค่าหน้าเว็บ
 # =========================
 st.set_page_config(
-    page_title="Phak Top Chawa ",
+    page_title="Phak Top Chawa",
     page_icon="🌿",
     layout="centered"
 )
@@ -18,17 +18,12 @@ st.set_page_config(
 # =========================
 st.markdown("""
 <style>
-
-/* =========================
-   BACKGROUND
-========================= */
+/* BACKGROUND */
 .stApp {
     background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
 }
 
-/* =========================
-   TEXT FIX (เฉพาะ Streamlit content)
-========================= */
+/* TEXT FIX */
 .stMarkdown p,
 .stMarkdown span,
 .stText,
@@ -47,9 +42,7 @@ label {
     color: #1b5e20 !important;
 }
 
-/* =========================
-   TITLE
-========================= */
+/* TITLE */
 .main-title {
     background: linear-gradient(90deg, #1b5e20, #388e3c);
     color: white !important;
@@ -79,7 +72,6 @@ label {
     margin-bottom: 24px;
     border: 1px solid #dcefd8;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -88,7 +80,12 @@ label {
 # =========================
 @st.cache_resource
 def load_model():
-    return YOLO("best.pt")
+    # แนะนำให้ใส่ try-except เผื่อกรณีหาไฟล์โมเดลไม่เจอแอปจะได้ไม่ล่มครับ
+    try:
+        return YOLO("best.pt")
+    except Exception as e:
+        st.error(f"ไม่สามารถโหลดไฟล์โมเดล 'best.pt' ได้ กรุณาตรวจสอบว่าอัปโหลดไฟล์ไว้ในที่เดียวกับ app.py หรือไม่? (Error: {e})")
+        return None
 
 model = load_model()
 
@@ -101,15 +98,16 @@ PIXELS_PER_SQUARE_METER = 2500.0
 # ฟังก์ชันตรวจจับ
 # =========================
 def detect(frame):
+    if model is None:
+        return frame, ["โมเดลยังไม่ได้โหลด"]
+        
     results = model(frame, conf=0.3, iou=0.4)
-
     output_text = []
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
 
         for i, mask in enumerate(masks):
-
             # resize mask
             mask = cv2.resize(mask, (frame.shape[1], frame.shape[0]))
 
@@ -123,7 +121,7 @@ def detect(frame):
             if area_pixels < 50:
                 continue
 
-            # 🔥 แปลงเป็น m²
+            # แปลงเป็น m²
             area_m2 = round(area_pixels / PIXELS_PER_SQUARE_METER, 2)
 
             # centroid
@@ -186,55 +184,58 @@ st.markdown("""
 # UPLOAD
 # =========================
 st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader(
     "รองรับ JPG, JPEG, PNG",
     type=["jpg", "jpeg", "png"]
 )
-
-analyze = st.button("Upload")
-
 st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
-# RUN
+# RUN (ปรับปรุงการทำงานของปุ่ม)
 # =========================
-if uploaded_file is not None and analyze:
+if uploaded_file is not None:
+    # แสดงภาพต้นฉบับให้ผู้ใช้ดูก่อนวิเคราะห์
+    image = Image.open(uploaded_file).convert("RGB")
+    
+    st.markdown('<div class="custom-box">', unsafe_allow_html=True)
+    st.subheader("📷 ภาพต้นฉบับ")
+    st.image(image, use_container_width=True)
+    
+    # เปลี่ยนให้กดวิเคราะห์หลังจากอัปโหลดภาพแล้ว
+    analyze = st.button("🔮 เริ่มวิเคราะห์ผักตบชวา")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    with st.spinner("กำลังวิเคราะห์ภาพ..."):
+    if analyze:
+        with st.spinner("กำลังวิเคราะห์ภาพ..."):
+            img_np = np.array(image)
+            frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        image = Image.open(uploaded_file).convert("RGB")
-        img_np = np.array(image)
+            result_frame, texts = detect(frame)
+            result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+            # =========================
+            # ผลลัพธ์ข้อความ
+            # =========================
+            st.markdown('<div class="custom-box">', unsafe_allow_html=True)
+            st.subheader("📋 ผลการตรวจจับ")
 
-        result_frame, texts = detect(frame)
+            if texts:
+                for t in texts:
+                    st.write(t)
+            else:
+                st.warning("ไม่พบกอผักตบชวาในภาพนี้")
 
-        result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        # =========================
-        # ผลลัพธ์ข้อความ
-        # =========================
-        st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-        st.subheader("📋 ผลการตรวจจับ")
-
-        if texts:
-            for t in texts:
-                st.write(t)
-        else:
-            st.warning("ไม่พบกอผักตบชวา")
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # =========================
-        # ภาพผลลัพธ์
-        # =========================
-        st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-        st.subheader("🖼️ ภาพผลการตรวจจับ")
-        st.image(result_rgb, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+            # =========================
+            # ภาพผลลัพธ์
+            # =========================
+            st.markdown('<div class="custom-box">', unsafe_allow_html=True)
+            st.subheader("🖼️ ภาพผลการตรวจจับ")
+            st.image(result_rgb, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # FOOTER
@@ -244,4 +245,4 @@ st.markdown("""
     <b>Phak Top Chawa Detector</b><br>
     ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา
 </div>
-""", unsafe_allow_html=True)  
+""", unsafe_allow_html=True)
