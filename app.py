@@ -43,12 +43,12 @@ html, body, [class*="css"] {
 .main-title {
 
     background: linear-gradient(
-        90deg,
+        10deg,
         #1b5e20,
         #388e3c
     );
 
-    color: white !important;
+    color: green !important;
 
     padding: 24px;
 
