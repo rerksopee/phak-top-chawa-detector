@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (สำหรับย้อมสีข้อความหลัก)
+# CSS (ล้างกล่องขาวปริศนาออกให้เกลี้ยง + คุมโทนเขียว)
 # =========================
 st.markdown("""
 <style>
@@ -64,14 +64,34 @@ label {
     font-weight: 500;
 }
 
+/* 🔥 ไม้ตายสุดท้าย: สั่งทำลายและซ่อนกล่องขาวๆ เปล่าๆ ทั้งหมดที่โผล่มากวนใจทิ้งไปให้หมด */
+[data-testid="stVerticalBlock"] > div:empty,
+.stElementContainer:empty,
+div:has(> hr) {
+    display: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+}
+
+/* จัดสไตล์เส้นตรงบางเฉียบสีเขียวเข้มไม่ให้หลุดเฟรม */
+.real-green-line {
+    display: block !important;
+    width: 100% !important;
+    height: 1px !important;
+    background-color: #1b5e20 !important;
+    margin: 20px 0 !important;
+    opacity: 1.0 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# ฟังก์ชันสร้างเส้นขีดตรงบางเฉียบสีเขียวเข้มด้วยตัวอักษร (ไม่โดนระบบบล็อกชัวร์)
+# ฟังก์ชันบังคับวาดเส้นตรงสีเขียวเข้ม (ยัดใส่ st.caption เอาชนะระบบดักกรอง)
 # =========================
-def show_divider_line():
-    st.write("─────────────────────────────────────────────────────────────────")
+def draw_line():
+    st.caption('<div class="real-green-line"></div>', unsafe_allow_html=True)
 # =========================
 # โหลดโมเดล
 # =========================
