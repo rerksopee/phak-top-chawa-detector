@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (เวอร์ชันหน้าตาตามรูปของพี่เป๊ะๆ)
+# CSS (เวอร์ชันดีไซน์ของพี่ + เพิ่มการเว้นช่องลมให้สบายตา)
 # =========================
 st.markdown("""
 <style>
@@ -51,7 +51,7 @@ h1, h2, h3 {
     text-align: center;
     font-size: 42px;
     font-weight: 700;
-    margin-bottom: 12px;
+    margin-bottom: 16px; /* เพิ่มช่องลมใต้แบนเนอร์ */
 }
 
 /* SUB TITLE */
@@ -59,11 +59,11 @@ h1, h2, h3 {
     text-align: center;
     color: #1b5e20 !important;
     font-size: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 35px; /* เพิ่มช่องลมก่อนเข้าสู่ส่วนอัปโหลด */
     font-weight: 500;
 }
 
-/* FILE UPLOADER DESIGN (ขอบเขียวประตามรูป) */
+/* FILE UPLOADER DESIGN (ขอบเขียวประ) */
 [data-testid="stFileUploaderDropzone"] {
     background: rgba(255, 255, 255, 0.25) !important;
     border: 1px dashed #1b5e20 !important;
@@ -98,6 +98,7 @@ h1, h2, h3 {
     font-size: 18px !important;
     font-weight: 700 !important;
     transition: 0.3s;
+    margin-top: 10px; /* เพิ่มช่องไฟเหนือปุ่มกด */
 }
 
 .stButton button:hover {
@@ -112,6 +113,7 @@ h1, h2, h3 {
 /* RESULT IMAGE */
 img {
     border-radius: 20px;
+    margin-top: 10px;
 }
 
 </style>
@@ -158,7 +160,8 @@ def detect(frame):
             cx = int(xs.mean())
             cy = int(ys.mean())
 
-            output_text.append(f"กอ#{i+1} {area_m2} m² (x={cx}, y={cy})")
+            # เปลี่ยนหน่วยเป็น "ตารางเมตร" ตามที่พี่ต้องการเรียบร้อยครับ
+            output_text.append(f"กอ#{i+1} {area_m2} ตารางเมตร (x={cx}, y={cy})")
 
             contours, _ = cv2.findContours(
                 (binary * 255).astype("uint8"),
@@ -208,6 +211,9 @@ analyze = st.button("Upload")
 # RUN & OUTPUT
 # =========================
 if uploaded_file is not None and analyze:
+    # เพิ่มช่องว่างหลบระยะก่อนแสดงผลการทำงาน
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     with st.spinner("กำลังวิเคราะห์ภาพ..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
@@ -224,7 +230,10 @@ if uploaded_file is not None and analyze:
         else:
             st.warning("ไม่พบกอผักตบชวา")
 
-        # ภาพผลลัพธ์ (อยู่ด้านล่างตามรูปเป๊ะๆ)
+        # เว้นช่องลมระหว่างผลลัพธ์ข้อความกับรูปภาพเล็กน้อย ให้ดูเรียบร้อย
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ภาพผลลัพธ์
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
@@ -232,7 +241,7 @@ if uploaded_file is not None and analyze:
 # FOOTER
 # =========================
 st.markdown("""
-<div style="text-align:center; color:#1b5e20; margin-top:40px; padding:20px;">
+<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
     ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา
 </div>
