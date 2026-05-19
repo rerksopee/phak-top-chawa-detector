@@ -121,6 +121,7 @@ img {
 
 </style>
 """, unsafe_allow_html=True)
+
 # =========================
 # โหลดโมเดล
 # =========================
@@ -161,7 +162,7 @@ def detect(frame):
             if area_pixels < 50:
                 continue
 
-            # 🔥 แปลงเป็น m²
+            # แปลงเป็น m²
             area_m2 = round(area_pixels / PIXELS_PER_SQUARE_METER, 2)
 
             # centroid
@@ -223,8 +224,6 @@ st.markdown("""
 # =========================
 # UPLOAD
 # =========================
-st.markdown('<div class="custom-box">', unsafe_allow_html=True)
-
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader(
@@ -233,8 +232,6 @@ uploaded_file = st.file_uploader(
 )
 
 analyze = st.button("Upload")
-
-st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # RUN
@@ -255,7 +252,6 @@ if uploaded_file is not None and analyze:
         # =========================
         # ผลลัพธ์ข้อความ
         # =========================
-        st.markdown('<div class="custom-box">', unsafe_allow_html=True)
         st.subheader("📋 ผลการตรวจจับ")
 
         if texts:
@@ -264,15 +260,11 @@ if uploaded_file is not None and analyze:
         else:
             st.warning("ไม่พบกอผักตบชวา")
 
-        st.markdown('</div>', unsafe_allow_html=True)
-
         # =========================
         # ภาพผลลัพธ์
         # =========================
-        st.markdown('<div class="custom-box">', unsafe_allow_html=True)
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================
 # FOOTER
