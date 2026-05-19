@@ -41,6 +41,7 @@ html, body, [class*="css"] {
    TITLE
 ========================= */
 .main-title {
+
     background: linear-gradient(
         90deg,
         #1b5e20,
@@ -81,9 +82,11 @@ html, body, [class*="css"] {
 ========================= */
 .divider {
 
-    height: 2px;
+    width: 100%;
 
-    background: #1b5e20;
+    height: 3px;
+
+    background-color: #1b5e20;
 
     margin-top: 28px;
 
@@ -91,14 +94,12 @@ html, body, [class*="css"] {
 
     border-radius: 999px;
 
-    opacity: 0.9;
+    border: none;
 }
 
 /* =========================
    FILE UPLOADER
 ========================= */
-
-/* กล่อง upload */
 [data-testid="stFileUploaderDropzone"] {
 
     background: rgba(255,255,255,0.45) !important;
@@ -175,6 +176,7 @@ img {
 
 </style>
 """, unsafe_allow_html=True)
+
 # =========================
 # โหลดโมเดล
 # =========================
