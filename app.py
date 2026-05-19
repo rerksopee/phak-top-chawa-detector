@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (แก้ไขแบบถอนรากถอนโคน และปรับเป็นเส้นขีดเขียวเข้ม)
+# CSS (ปรับเป็นเส้นขีดแบ่งบาง ๆ คลีน ๆ สีเขียวเข้ม)
 # =========================
 st.markdown("""
 <style>
@@ -64,15 +64,18 @@ label {
     font-weight: 500;
 }
 
-/* box (ปรับเป็นเส้นขีดเขียวเข้มdashed) */
+/* ปรับพื้นที่ข้อมูลให้ไม่มีกรอบ แต่เป็นเส้นขีดแบ่งบาง ๆ ด้านล่างแทน */
 .my-custom-container {
-    background-color: white !important;
-    padding: 28px !important;
-    border-radius: 22px !important;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important;
-    margin-bottom: 24px !important;
-    /* เปลี่ยน solid เป็น dashed และใช้สีเขียวเข้ม */
-    border: 3px dashed #1b5e20 !important; 
+    background-color: transparent !important; /* เอาพื้นหลังขาวออก ให้เนียนไปกับเว็บ */
+    padding: 20px 0px !important;            /* ปรับช่องไฟให้พอดี */
+    margin-bottom: 30px !important;
+    box-shadow: none !important;              /* เอาเงาออก */
+    
+    /* สร้างเส้นขีดแบ่งบาง ๆ สีเขียวเข้มไว้ใต้ส่วนนั้น ๆ */
+    border-bottom: 1px solid #1b5e20 !important; 
+    border-top: none !important;
+    border-left: none !important;
+    border-right: none !important;
 }
 
 </style>
