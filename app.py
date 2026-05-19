@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (แก้ปัญหาสีข้อความและพื้นหลังระบบ)
+# CSS (ดักจับตัวแบ่งของระบบและย้อมสีเขียวเข้ม)
 # =========================
 st.markdown("""
 <style>
@@ -64,14 +64,16 @@ label {
     font-weight: 500;
 }
 
+/* 🔥 บังคับเส้นแบ่งของระบบ (hr) ให้เป็นเส้นตรง 1px สีเขียวเข้มชัวร์ๆ */
+hr {
+    border: none !important;
+    border-top: 1px solid #1b5e20 !important;
+    margin: 25px 0 !important;
+    opacity: 1.0 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
-
-# =========================
-# ฟังก์ชันสร้างเส้นตรงบางสีเขียวเข้ม (บังคับวาดผ่าน st.html)
-# =========================
-def draw_green_line():
-    st.html('<div style="border-top: 1px solid #1b5e20; width: 100%; margin: 30px 0; opacity: 0.8;"></div>')
 # =========================
 # โหลดโมเดล
 # =========================
