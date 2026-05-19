@@ -155,7 +155,7 @@ def detect(frame):
                     (x, y),
                     (x + w, y + h),
                     (0, 255, 0),
-                    1
+                    2
                 )
 
             # centroid
