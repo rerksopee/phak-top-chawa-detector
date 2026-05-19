@@ -8,27 +8,23 @@ from PIL import Image
 # ตั้งค่าหน้าเว็บ
 # =========================
 st.set_page_config(
-    page_title="Phak Top Chawa ",
+    page_title="Phak Top Chawa",
     page_icon="🌿",
     layout="centered"
 )
 
 # =========================
-# CSS (แก้ปัญหาสีใน system/dark mode)
+# CSS (แก้ไขแบบถอนรากถอนโคน)
 # =========================
 st.markdown("""
 <style>
 
-/* =========================
-   BACKGROUND
-========================= */
+/* BACKGROUND */
 .stApp {
-    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%);
+    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important;
 }
 
-/* =========================
-   TEXT FIX (เฉพาะ Streamlit content)
-========================= */
+/* TEXT FIX */
 .stMarkdown p,
 .stMarkdown span,
 .stText,
@@ -47,9 +43,7 @@ label {
     color: #1b5e20 !important;
 }
 
-/* =========================
-   TITLE
-========================= */
+/* TITLE */
 .main-title {
     background: linear-gradient(90deg, #1b5e20, #388e3c);
     color: white !important;
@@ -70,19 +64,18 @@ label {
     font-weight: 500;
 }
 
-/* box */
-.custom-box {
-    background: white;
-    padding: 28px;
-    border-radius: 22px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-    margin-bottom: 24px;
-    border: 1px solid #dcefd8;
+/* box (กำหนดคลาสให้ชัดเจน ไม่ให้ไปเอฟเฟกต์กับ Element อื่นของ Streamlit) */
+.my-custom-container {
+    background-color: white !important;
+    padding: 28px !important;
+    border-radius: 22px !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important;
+    margin-bottom: 24px !important;
+    border: 1px solid #dcefd8 !important;
 }
 
 </style>
 """, unsafe_allow_html=True)
-
 # =========================
 # โหลดโมเดล
 # =========================
