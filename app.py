@@ -63,7 +63,9 @@ html, body, [class*="css"] {
     margin-bottom: 12px;
 }
 
-/* subtitle */
+/* =========================
+   SUB TITLE
+========================= */
 .sub-title {
 
     text-align: center;
@@ -84,17 +86,17 @@ html, body, [class*="css"] {
 
     width: 100%;
 
-    height: 3px;
+    height: 2px;
 
-    background-color: #1b5e20;
+    background: #1b5e20;
+
+    border: none;
 
     margin-top: 28px;
 
     margin-bottom: 28px;
 
     border-radius: 999px;
-
-    border: none;
 }
 
 /* =========================
@@ -102,7 +104,12 @@ html, body, [class*="css"] {
 ========================= */
 [data-testid="stFileUploaderDropzone"] {
 
-    background: rgba(255,255,255,0.45) !important;
+    background: rgba(
+        255,
+        255,
+        255,
+        0.45
+    ) !important;
 
     border: none !important;
 
@@ -176,7 +183,6 @@ img {
 
 </style>
 """, unsafe_allow_html=True)
-
 # =========================
 # โหลดโมเดล
 # =========================
