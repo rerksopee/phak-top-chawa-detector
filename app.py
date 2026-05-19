@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (เวอร์ชันปกติ คลีนสุดๆ ไม่มีขีด ไม่มีช่องลมประดิษฐ์)
+# CSS (เวอร์ชันหน้าตาตามรูปของพี่เป๊ะๆ)
 # =========================
 st.markdown("""
 <style>
@@ -63,7 +63,7 @@ h1, h2, h3 {
     font-weight: 500;
 }
 
-/* FILE UPLOADER DESIGN (ขอบมน เนียนตา ไม่บวมขาว) */
+/* FILE UPLOADER DESIGN (ขอบเขียวประตามรูป) */
 [data-testid="stFileUploaderDropzone"] {
     background: rgba(255, 255, 255, 0.25) !important;
     border: 1px dashed #1b5e20 !important;
@@ -109,11 +109,6 @@ h1, h2, h3 {
     );
 }
 
-/* ลบตัวคำสั่งเส้นของระบบทั้งหมดไม่ให้กวนสายตา */
-hr {
-    display: none !important;
-}
-
 /* RESULT IMAGE */
 img {
     border-radius: 20px;
@@ -131,10 +126,14 @@ def load_model():
 
 model = load_model()
 
-# ค่าคาลิเบรตพิกเซล
+# =========================
+# ค่าคาลิเบรต pixel -> m²
+# =========================
 PIXELS_PER_SQUARE_METER = 2500.0
 
-# ฟังก์ชันตรวจจับผักตบชวา
+# =========================
+# ฟังก์ชันตรวจจับ
+# =========================
 def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
     output_text = []
@@ -159,9 +158,7 @@ def detect(frame):
             cx = int(xs.mean())
             cy = int(ys.mean())
 
-            output_text.append(
-                f"กอ#{i+1}   {area_m2} m² (x={cx}, y={cy})"
-            )
+            output_text.append(f"กอ#{i+1} {area_m2} m² (x={cx}, y={cy})")
 
             contours, _ = cv2.findContours(
                 (binary * 255).astype("uint8"),
@@ -187,18 +184,17 @@ def detect(frame):
 
     return frame, output_text
 
-
 # =========================
-# โครงสร้างหน้าเว็บหลัก (เว้นระยะปกติของระบบ)
+# UI HEADER
 # =========================
-
-# 1. ส่วนหัวเว็บ
 st.markdown("""
 <div class="main-title">🌿 Phak Top Chawa </div>
 <div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>
 """, unsafe_allow_html=True)
 
-# 2. ส่วนอินพุตอัปโหลดไฟล์
+# =========================
+# UPLOAD
+# =========================
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader(
@@ -208,7 +204,9 @@ uploaded_file = st.file_uploader(
 
 analyze = st.button("Upload")
 
-# 3. ส่วนประมวลผลและการแสดงผลลัพธ์
+# =========================
+# RUN & OUTPUT
+# =========================
 if uploaded_file is not None and analyze:
     with st.spinner("กำลังวิเคราะห์ภาพ..."):
         image = Image.open(uploaded_file).convert("RGB")
@@ -218,7 +216,7 @@ if uploaded_file is not None and analyze:
         result_frame, texts = detect(frame)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        # หัวข้อผลตรวจจับตัวหนังสือ
+        # ผลลัพธ์ข้อความ
         st.subheader("📋 ผลการตรวจจับ")
         if texts:
             for t in texts:
@@ -226,15 +224,15 @@ if uploaded_file is not None and analyze:
         else:
             st.warning("ไม่พบกอผักตบชวา")
 
-        # หัวข้อแสดงรูปภาพ
+        # ภาพผลลัพธ์ (อยู่ด้านล่างตามรูปเป๊ะๆ)
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
 # =========================
-# FOOTER ท้ายเว็บ
+# FOOTER
 # =========================
 st.markdown("""
-<div style="text-align:center; color:#1b5e20; margin-top:55px; padding:20px;">
+<div style="text-align:center; color:#1b5e20; margin-top:40px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
     ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา
 </div>
