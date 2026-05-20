@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS (เวอร์ชันดีไซน์ของพี่ + เพิ่มการเว้นช่องลมให้สบายตา)
+# CSS (เวอร์ชันดีไซน์ของเน่ + เพิ่มการเว้นช่องลมให้สบายตา)
 # =========================
 st.markdown("""
 <style>
@@ -129,11 +129,6 @@ def load_model():
 model = load_model()
 
 # =========================
-# ค่าคาลิเบรต pixel -> m²
-# =========================
-PIXELS_PER_SQUARE_METER = 2500.0
-
-# =========================
 # ฟังก์ชันตรวจจับ
 # =========================
 def detect(frame):
@@ -151,7 +146,6 @@ def detect(frame):
             if area_pixels < 50:
                 continue
 
-            area_m2 = round(area_pixels / PIXELS_PER_SQUARE_METER, 2)
             ys, xs = np.where(binary)
 
             if len(xs) == 0 or len(ys) == 0:
@@ -160,8 +154,8 @@ def detect(frame):
             cx = int(xs.mean())
             cy = int(ys.mean())
 
-            # เปลี่ยนหน่วยเป็น "ตารางเมตร" ตามที่พี่ต้องการเรียบร้อยครับ
-            output_text.append(f"กอ#{i+1} {area_m2} ตารางเมตร (x={cx}, y={cy})")
+            # แก้ไขส่วนรายงานผลเป็นหน่วย "พิกเซล" เรียบร้อยครับ
+            output_text.append(f"กอ#{i+1} พื้นที่: {area_pixels} พิกเซล (จุดศูนย์กลาง x={cx}, y={cy})")
 
             contours, _ = cv2.findContours(
                 (binary * 255).astype("uint8"),
