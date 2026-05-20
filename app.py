@@ -155,7 +155,7 @@ def detect(frame):
             cy = int(ys.mean())
 
             # แก้ไขส่วนรายงานผลเป็นหน่วย "พิกเซล" เรียบร้อยครับ
-            output_text.append(f"กอ#{i+1} พื้นที่: {area_pixels} pixel (จุดศูนย์กลาง x={cx}, y={cy})")
+            output_text.append(f"กอ#{i+1} พื้นที่: {area_pixels} pixel ( x={cx}, y={cy})")
 
             contours, _ = cv2.findContours(
                 (binary * 255).astype("uint8"),
