@@ -18,32 +18,14 @@ st.set_page_config(
 # =========================
 st.markdown("""
 <style>
-/* BACKGROUND */
 .stApp {
-    background: linear-gradient(
-        180deg,
-        #eef8ec 0%,
-        #f8fff6 100
-    ) !important;
+    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important;
 }
-
-/* TEXT COLOR */
-.stMarkdown p, 
-.stMarkdown span, 
-.stText, 
-.stSubheader, 
-.stHeader,
-h1, h2, h3 {
+.stMarkdown p, .stMarkdown span, .stText, .stSubheader, .stHeader, h1, h2, h3 {
     color: #1b5e20 !important;
 }
-
-/* TITLE BANNER */
 .main-title {
-    background: linear-gradient(
-        90deg,
-        #1b5e20,
-        #388e3c
-    );
+    background: linear-gradient(90deg, #1b5e20, #388e3c);
     color: white !important;
     padding: 24px;
     border-radius: 22px;
@@ -52,8 +34,6 @@ h1, h2, h3 {
     font-weight: 700;
     margin-bottom: 16px;
 }
-
-/* SUB TITLE */
 .sub-title {
     text-align: center;
     color: #1b5e20 !important;
@@ -61,19 +41,13 @@ h1, h2, h3 {
     margin-bottom: 35px;
     font-weight: 500;
 }
-
-/* FILE UPLOADER DESIGN */
 [data-testid="stFileUploaderDropzone"] {
     background: rgba(255, 255, 255, 0.25) !important;
     border: 1px dashed #1b5e20 !important;
     border-radius: 18px !important;
     padding: 20px !important;
 }
-
-.stFileUploader * {
-    color: #1b5e20 !important;
-}
-
+.stFileUploader * { color: #1b5e20 !important; }
 .stFileUploader button {
     border-radius: 12px !important;
     border: 1px solid #1b5e20 !important;
@@ -81,15 +55,9 @@ h1, h2, h3 {
     color: #1b5e20 !important;
     font-weight: 600 !important;
 }
-
-/* BUTTON DESIGN */
 .stButton button {
     width: 100%;
-    background: linear-gradient(
-        90deg,
-        #1b5e20,
-        #388e3c
-    );
+    background: linear-gradient(90deg, #1b5e20, #388e3c);
     color: white !important;
     border: none !important;
     border-radius: 16px !important;
@@ -99,21 +67,11 @@ h1, h2, h3 {
     transition: 0.3s;
     margin-top: 10px;
 }
-
 .stButton button:hover {
     transform: scale(1.02);
-    background: linear-gradient(
-        90deg,
-        #14461a,
-        #2e7d32
-    );
+    background: linear-gradient(90deg, #14461a, #2e7d32);
 }
-
-/* RESULT IMAGE */
-img {
-    border-radius: 20px;
-    margin-top: 10px;
-}
+img { border-radius: 20px; margin-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -127,7 +85,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# ฟังก์ชันตรวจจับและคำนวณพื้นที่ (ชดเชยระยะใกล้-ไกล ปรับจูนเสร็จสมบูรณ์)
+# ฟังก์ชันตรวจจับและคำนวณพื้นที่อิงจากกรอบทดลอง 1x1 เมตร
 # =========================
 def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
@@ -153,36 +111,37 @@ def detect(frame):
             cy = int(ys.mean())
 
             # -----------------------------------------------------------------
-            # 🛠️ สูตรคณิตศาสตร์ปรับปรุงใหม่ (เวอร์ชันแก้ปัญหา ใกล้-ไกล ไม่เท่ากัน)
+            # 🛠️ สูตรคำนวณพื้นที่อิงจากกรอบ 1x1 เมตร (ชดเชยระยะ Perspective ทัศนียภาพ)
             # -----------------------------------------------------------------
             real_area_m2 = 0.0
             height_pixels = frame.shape[0]  # ความสูงแนวตั้งของรูปภาพ
             
-            # วนลูปคำนวณพื้นที่ทีละพิกเซลตามพิกัดแนวตั้ง (แกน Y) เพื่อชดเชยระยะ Perspective
+            # วนลูปคำนวณพื้นที่รายพิกเซลตามพิกัดแนวตั้ง (แกน Y)
             for y_pixel in ys:
-                # แปลงพิกัดแกน Y ให้อยู่ในรูปสัดส่วน (0.0 บนสุดภาพ = ไกล , 1.0 ล่างสุดภาพ = ใกล้)
+                # แปลงพิกัดแกน Y ให้อยู่ในรูปสัดส่วนพิกเซล (0.0 บนสุดภาพ = ระยะไกล , 1.0 ล่างสุดภาพ = ระยะใกล้)
                 norm_y = y_pixel / height_pixels
                 
-                # จำลองระยะเมตร (Z) จากพิกัดรูปถ่าย (อิงจากระยะเครื่องเลเซอร์ 3.2m ถึง 6.0m ของคุณ)
-                estimated_z = 6.0 - (2.8 * norm_y) 
+                # ฟังก์ชันประมาณการจำนวนพิกเซลทั้งหมดของกรอบ 1x1 เมตร ณ พิกัดความลึกแนวตั้งนั้น ๆ
+                # สอบเทียบ (Calibrate) จากสัดส่วนภาพถ่ายของคุณ:
+                # - ถ้าระยะใกล้ (ด้านล่างภาพ): กรอบ 1x1 เมตรจะมีขนาดพื้นที่ประมาณ 85,000 พิกเซล
+                # - ถ้าระยะไกล (ด้านบนภาพ): กรอบ 1x1 เมตรจะหดเล็กลงเหลือพื้นที่ประมาณ 22,000 พิกเซล
+                frame_pixels_at_y = 22000.0 + (63000.0 * norm_y)
                 
-                # ตัวหารชดเชยพิกเซลต่อตารางเมตร (ปรับจูนค่าคงที่ Gain และเลขยกกำลังลงตัวเรียบร้อย)
-                pixels_per_m2_at_z = 285000.0 / (estimated_z ** 1.8)
-                
-                # สะสมหน่วยพื้นที่จริงเข้าไปในตัวแปร
-                real_area_m2 += (1.0 / pixels_per_m2_at_z)
+                # ค่าน้ำหนักพื้นที่ของพิกเซลนี้ (ตารางเมตร) = 1 ตร.ม. / จำนวนพิกเซลของกรอบ ณ จุดนั้น
+                pixel_area_m2 = 1.0 / frame_pixels_at_y
+                real_area_m2 += pixel_area_m2
 
-            # ปัดเศษทศนิยม 4 ตำแหน่งตามรูปแบบโปรแกรมเดิม
+            # ปัดเศษทศนิยม 4 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 4)
 
-            # ป้องกันข้อผิดพลาดกรณีขอบเขตหน้ากาก YOLO หลุดสเกลกรอบ 1 ตารางเมตร
+            # ตรวจสอบความถูกต้องทางกายภาพ (เนื่องจากผักตบชวาอยู่ในกรอบ 1x1 ม. พื้นที่ไม่มีทางเกิน 1 ตร.ม.)
             if real_area_m2 > 1.0:
-                real_area_m2 = round(np.random.uniform(0.35, 0.38), 4)
+                real_area_m2 = 1.0
 
-            # บันทึกข้อความรายงานผลเป็นหน่วย ตร.ม. เพื่อแสดงผลบนหน้าเว็บ
+            # รูปแบบข้อความรายงานผลหน่วยตารางเมตร (ตร.ม.)
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม. (x={cx}, y={cy})")
 
-            # วาดกรอบและตำแหน่งจุดกึ่งกลาง (โค้ดดั้งเดิมของคุณ)
+            # วาดกรอบและแสดงผลบนรูปภาพ (โค้ดดั้งเดิมของคุณ)
             contours, _ = cv2.findContours(
                 (binary * 255).astype("uint8"),
                 cv2.RETR_EXTERNAL,
@@ -216,7 +175,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================
-# UPLOAD INPUT (หน้าเว็บเหมือนเดิมทุกประการ)
+# UPLOAD INPUT (รับรูปใบเดียวเหมือนเดิม)
 # =========================
 st.subheader("📤 อัปโหลดรูปภาพ")
 
@@ -234,16 +193,13 @@ if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
     
     with st.spinner("กำลังวิเคราะห์ภาพ..."):
-        # แปลงไฟล์ภาพที่อัปโหลดเข้ามาเป็น Array รูปภาพ
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        # ประมวลผลผ่านโมเดลและฟังก์ชันสูตรใหม่
         result_frame, texts = detect(frame)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        # แสดงผลลัพธ์ข้อความด้านล่างปุ่มกด
         st.subheader("📋 ผลการตรวจจับ")
         if texts:
             for t in texts:
@@ -253,7 +209,6 @@ if uploaded_file is not None and analyze:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # แสดงรูปภาพที่ประมวลผลวาดกรอบและค่า ตร.ม. เรียบร้อยแล้ว
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
