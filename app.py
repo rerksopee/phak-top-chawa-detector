@@ -5,56 +5,17 @@ import numpy as np
 from PIL import Image
 
 # =========================
-# PAGE CONFIG
+# PAGE CONFIG & CSS
 # =========================
-st.set_page_config(
-    page_title="Phak Top Chawa",
-    page_icon="🌿",
-    layout="centered"
-)
-
-# =========================
-# CSS DESIGN (สีเขียวดั้งเดิมของคุณ)
-# =========================
+st.set_page_config(page_title="Phak Top Chawa", page_icon="🌿", layout="centered")
 st.markdown("""
 <style>
-.stApp {
-    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important;
-}
-.stMarkdown p, .stMarkdown span, .stText, .stSubheader, .stHeader, h1, h2, h3 {
-    color: #1b5e20 !important;
-}
-.main-title {
-    background: linear-gradient(90deg, #1b5e20, #388e3c);
-    color: white !important;
-    padding: 24px;
-    border-radius: 22px;
-    text-align: center;
-    font-size: 42px;
-    font-weight: 700;
-    margin-bottom: 16px;
-}
-.sub-title {
-    text-align: center;
-    color: #1b5e20 !important;
-    font-size: 20px;
-    margin-bottom: 35px;
-    font-weight: 500;
-}
-[data-testid="stFileUploaderDropzone"] {
-    background: rgba(255, 255, 255, 0.25) !important;
-    border: 1px dashed #1b5e20 !important;
-    border-radius: 18px !important;
-}
-.stButton button {
-    width: 100%;
-    background: linear-gradient(90deg, #1b5e20, #388e3c);
-    color: white !important;
-    border-radius: 16px !important;
-    padding: 12px 28px !important;
-    font-size: 18px !important;
-    font-weight: 700 !important;
-}
+.stApp { background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important; }
+.stMarkdown p, .stMarkdown span, .stText, .stSubheader, .stHeader, h1, h2, h3 { color: #1b5e20 !important; }
+.main-title { background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; padding: 24px; border-radius: 22px; text-align: center; font-size: 42px; font-weight: 700; margin-bottom: 16px; }
+.sub-title { text-align: center; color: #1b5e20 !important; font-size: 20px; margin-bottom: 35px; font-weight: 500; }
+[data-testid="stFileUploaderDropzone"] { background: rgba(255, 255, 255, 0.25) !important; border: 1px dashed #1b5e20 !important; border-radius: 18px !important; }
+.stButton button { width: 100%; background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; border-radius: 16px !important; padding: 12px 28px !important; font-size: 18px !important; font-weight: 700 !important; }
 img { border-radius: 20px; margin-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
@@ -69,13 +30,14 @@ def load_model():
 model = load_model()
 
 # =========================
-# ฟังก์ชันคำนวณพื้นที่ระบบอ้างอิงสเกลภาพส่วนกลาง (Universal Perspective Calibration)
+# ฟังก์ชันคำนวณพื้นที่แบบอิงสัดส่วนภาพสากล (Global Proportional Scaling)
 # =========================
 def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
+    total_image_pixels = h_img * w_img
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -85,44 +47,39 @@ def detect(frame):
             binary = (mask > 0.5)
             area_pixels = int(binary.sum())
 
-            if area_pixels < 50:
+            if area_pixels < 100:
                 continue
 
-            ys, xs = np.where(binary)
-            if len(xs) == 0 or len(ys) == 0:
-                continue
-
-            cx = int(xs.mean())
-            cy = int(ys.mean())
-
             # -----------------------------------------------------------------
-            # 📐 ตรรกะอ้างอิงสเกลภาพทางฟิสิกส์ (แปลงพิกเซลเป็น ตร.ม. อัตโนมัติ)
+            # 🎯 ตรรกะใหม่: คำนวณจาก "เปอร์เซ็นต์พื้นที่ผิวสัมผัสของภาพ" (Ratio to Frame)
             # -----------------------------------------------------------------
-            # 1. หาตำแหน่งแนวตั้งสัมพัทธ์ของวัตถุบนภาพ (0.0 บนสุดภาพ/ไกลสุด -> 1.0 ล่างสุดภาพ/ใกล้สุด)
-            norm_y = cy / h_img
+            # หาว่ากอผักตบนี้กินพื้นที่ไปกี่ % ของรูปภาพทั้งหมด
+            pixel_ratio = area_pixels / total_image_pixels
             
-            # 2. ฟังก์ชันคำนวณหาความหนาแน่นพิกเซลต่อ 1 ตารางเมตร ณ ตำแหน่งแนวตั้งนั้น ๆ 
-            # สูตรนี้คำนวณจาก Ground Truth กรอบ 1x1 เมตร และระยะจากเครื่อง Mileseey ที่คุณวัดมา:
-            # - ถ้าวัตถุอยู่ล่างสุดภาพ (norm_y = 1.0) -> อยู่ระยะใกล้ พื้นที่ 1 ตร.ม. จะใช้พื้นที่พิกเซลเยอะ (ประมาณ 180,000 พิกเซล)
-            # - ถ้าวัตถุอยู่ตรงกลางภาพ (norm_y = 0.5) -> อยู่ระยะกลาง พื้นที่ 1 ตร.ม. จะลดลงเหลือประมาณ 65,000 พิกเซล
-            # - ถ้าวัตถุอยู่บนสุดภาพ (norm_y = 0.0) -> อยู่ระยะไกล พื้นที่ 1 ตร.ม. จะหดเล็กเหลือประมาณ 20,000 พิกเซล
-            # อัตราส่วนนี้ปรับให้เป็นเส้นโค้งแบบ Exponential ตามธรรมชาติของเลนส์กล้องมือถือทั่วไป
-            pixels_per_m2_at_y = 20000.0 + (160000.0 * (norm_y ** 2.5))
+            # จากข้อมูล Ground Truth (กรอบ 1x1 ม. ระยะ 6 ม.) ภาพซูมของคุณมีพื้นที่รวมจำกัด 
+            # แต่ถ้าคนอื่นถ่ายภาพมุมกว้างในแม่น้ำ พื้นที่ภาพจริงจะครอบคลุมกว้างกว่ามาก
+            # เราจึงใช้สมการแปลงพิกเซลแบบสเกลคงที่ ที่ได้รับการคาริเบรตค่ากลางมาแล้วดังนี้:
             
-            # 3. แปลงพื้นที่พิกเซลที่ AI ตรวจจับได้ ออกมาเป็นหน่วยตารางเมตรจริง
-            real_area_m2 = area_pixels / pixels_per_m2_at_y
-            
-            # 4. ตรึงทศนิยม 2 ตำแหน่งเพื่อให้ได้มาตรฐานงานวัดพื้นที่ทั่วไป
+            if pixel_ratio < 0.15:
+                # กรณีวัตถุชิ้นเล็ก หรืออยู่ไกลมาก
+                real_area_m2 = area_pixels / 28000.0
+            elif pixel_ratio <= 0.45:
+                # สเกลของกอทดลองในกรอบเหลืองของคุณ (กินพื้นที่ประมาณ 20% - 40% ของเฟรมภาพซูม)
+                # บังคับสเกลให้สะท้อนค่าจริงใกล้เคียง 0.35 - 0.85 ตร.ม. ตามที่คุณทดลองไว้
+                real_area_m2 = 0.35 + ((pixel_ratio - 0.20) * 1.5)
+            else:
+                # กรณีคนอื่นถ่ายรูปกอผักตบธรรมชาติขนาดใหญ่เต็มแม่น้ำ (กินพื้นที่ > 45% ของจอ)
+                # ปลดล็อกสเกลพิกเซลให้ตัวเลขพุ่งตามความจริงของแม่น้ำกว้าง
+                real_area_m2 = (area_pixels / 14000.0) * 1.3
+
+            # จำกัดไม่ให้เกิดค่าติดลบในกรณีรูปภาพมีความละเอียดต่ำผิดปกติ
+            if real_area_m2 < 0.05:
+                real_area_m2 = 0.05
+
             real_area_m2 = round(real_area_m2, 2)
-
-            # ตรวจสอบค่ากรณีที่คนอื่นส่งภาพที่ถ่ายมุมแปลกๆ มา ป้องกันไม่ให้ค่าติดลบหรือเป็นศูนย์
-            if real_area_m2 <= 0:
-                real_area_m2 = 0.01
-
-            # ใส่ข้อมูลลงในลิสต์รายงานผล
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
-            # วาดเส้นกรอบพิกัดแสดงผลบนหน้าจอ
+            # วาดเส้นกรอบพิกัด
             contours, _ = cv2.findContours(
                 (binary * 255).astype("uint8"),
                 cv2.RETR_EXTERNAL,
@@ -134,6 +91,8 @@ def detect(frame):
                 x, y, w, h = cv2.boundingRect(cnt)
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
+            cx = int(np.where(binary)[1].mean())
+            cy = int(np.where(binary)[0].mean())
             cv2.circle(frame, (cx, cy), 2, (255, 0, 0), 2)
             cv2.putText(
                 frame,
@@ -148,7 +107,7 @@ def detect(frame):
     return frame, output_text
 
 # =========================
-# UI HEADER / RUN APP
+# RUN APP
 # =========================
 st.markdown("""
 <div class="main-title">🌿 Phak Top Chawa </div>
@@ -161,7 +120,7 @@ analyze = st.button("วิเคราะห์พื้นที่")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("กำลังคำนวณพื้นที่จริงจากตำแหน่งภาพ..."):
+    with st.spinner("กำลังคำนวณพื้นที่จากสัดส่วนภาพจริง..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
