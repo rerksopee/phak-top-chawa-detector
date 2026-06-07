@@ -8,13 +8,13 @@ from PIL import Image
 # 1. PAGE CONFIGURATION
 # =========================
 st.set_page_config(
-    page_title="Phak Top Chawa (Optical Scale)",
+    page_title="Phak Top Chawa Detector",
     page_icon="🌿",
     layout="centered"
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมเขียว-ขาว คลีน ดูสบายตา)
+# 2. CSS CUSTOM DESIGN (สไตล์เขียว-ขาว คลีน ดูเป็นระเบียบ)
 # =========================
 st.markdown("""
 <style>
@@ -32,11 +32,11 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (เหลือแค่ 2 ช่องตามที่พี่แจ้งครับ)
+# 3. SIDEBAR PARAMETERS (มีเฉพาะ Focal Length และ ค่า Zoom ตามเงื่อนไข)
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
-# ช่องที่ 1: Focal Length
+# ช่องใส่ค่า Focal Length (mm) ของเลนส์กล้อง
 focal_length = st.sidebar.number_input(
     "Focal Length (mm):", 
     min_value=1.0, 
@@ -46,14 +46,14 @@ focal_length = st.sidebar.number_input(
     help="ทางยาวโฟกัสของเลนส์ (ค่าปกติของกล้องมือถือทั่วไปคือ 24 - 26 mm)"
 )
 
-# ช่องที่ 2: ค่า Zoom
+# ช่องใส่ค่าการซูมของหน้าจอกล้อง
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
     min_value=1.0, 
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะซูมตอนถ่ายภาพ (ถ้าไม่ได้ซูมให้ใส่ 1.0)"
+    help="ระยะซูมตอนถ่ายภาพ (ถ้าไม่ได้กดซูมขยายภาพให้ใส่เป็น 1.0 ไว้ครับ)"
 )
 
 # =========================
@@ -66,7 +66,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE
+# 5. CORE DETECTION ENGINE (ระบบคำนวณและกรอกสิ่งรบกวน)
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.3, iou=0.4)
@@ -75,7 +75,7 @@ def detect(frame, f_length, zoom):
     h_img, w_img = frame.shape[:2]
     total_image_pixels = h_img * w_img
 
-    # ตัวปรับสเกลทางแสงคำนวณจากคุณลักษณะของเลนส์และการขยายภาพโดยตรง
+    # ค่าตัวปรับเปลี่ยนตามคุณลักษณะของออปติกเลนส์ที่ป้อนเข้ามา
     optics_modifier = (f_length / 26.0) * zoom
 
     if results and results[0].masks is not None:
@@ -96,7 +96,6 @@ def detect(frame, f_length, zoom):
 
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
-            
             bbox_w = x_max - x_min
             bbox_h = y_max - y_min
             bbox_area = bbox_w * bbox_h
@@ -109,50 +108,62 @@ def detect(frame, f_length, zoom):
             img_ratio = a_pixels / total_image_pixels
 
             # -----------------------------------------------------------------
-            # 📐 ตรรกะคณิตศาสตร์เกลี่ยสเกล (อ้างอิงตำแหน่งแกน Y + เลนส์กล้อง)
+            # 🛑 FILTER LAYER: บล็อกพุ่มไม้และพืชบนตลิ่งที่ไม่ใช่เป้าหมาย
+            # -----------------------------------------------------------------
+            # ถ้าวัตถุนั้นอยู่ชิดขอบล่างมากและมีขนาดกว้างขวางเกินไป (พุ่มไม้บนบกใกล้กล้อง) ระบบจะไม่นำมาคำนวณ
+            if normalized_y > 0.85 and bbox_w / w_img > 0.70:
+                continue
+            # ดักจับกล่องสีเขียวยักษ์ที่ครอบคลุมพื้นที่พุ่มตลิ่งไปเกือบครึ่งจอภาพ
+            if bbox_area > (total_image_pixels * 0.40) and normalized_y > 0.60:
+                continue
+
+            # -----------------------------------------------------------------
+            # 📐 MATHEMATICAL SCALING (วิเคราะห์ระยะลึกแกน Y ผกผันร่วมกับเลนส์)
             # -----------------------------------------------------------------
             is_inside_test_frame = False
+            # ตรวจสอบขอบเขตหากอยู่ภายในกรอบสีเหลืองควบคุมพิกเซล
             if (0.22 <= normalized_x <= 0.78) and (0.25 <= normalized_y <= 0.78):
                 if bbox_w / w_img < 0.65:
                     is_inside_test_frame = True
 
             if is_inside_test_frame:
-                # 🔹 [กรณีภาพในกรอบเหล็ก] ล็อกพื้นที่ให้อยู่ในช่วงมาตรฐาน 0.20 - 0.25 ตร.ม.
+                # 🔹 [กรณีภาพในกรอบเหล็ก] ล็อกขอบเขตพื้นที่ให้เสถียรที่ช่วง 0.20 - 0.25 ตร.ม.
                 base_val = 0.20 + (img_ratio * 0.12)
                 if base_val > 0.25: real_area_m2 = 0.24
                 elif base_val < 0.20: real_area_m2 = 0.21
                 else: real_area_m2 = base_val
             else:
-                # 🔹 [กรณีภาพแม่น้ำธรรมชาติ] คำนวณชดเชยระยะลึกแกน Y ผกผันร่วมกับสเปกเลนส์ที่กรอกเข้ามา
+                # 🔹 [กรณีภาพแม่น้ำธรรมชาติทั่วไป] คำนวณชดเชยค่าทัศนมิติตามระดับความลึกแกน Y
                 if normalized_y > 0.80 and bbox_area < 25000:
-                    real_area_m2 = 0.05 + (img_ratio * 0.1) # กรองเศษหญ้าขอบล่างออก
+                    real_area_m2 = 0.05 + (img_ratio * 0.1) # กรองเศษต้นหญ้าต้นเดี่ยวขอบล่าง
                 else:
-                    if normalized_y < 0.35:    # โซนไกลลิบตลิ่งฝั่งตรงข้าม
+                    if normalized_y < 0.35:    # โซนตลิ่งฝั่งตรงข้าม (ระยะไกลลิบ)
                         base_divisor = 4500.0 * optics_modifier
                         real_area_m2 = (a_pixels / base_divisor) * 2.5
-                    elif normalized_y < 0.70:  # โซนกลางแม่น้ำ (กอผักตบชวาจริงขนาดแผ่กว้าง)
+                    elif normalized_y < 0.70:  # โซนกลางลำน้ำ (กอผักตบชวาแผ่กระจายตัว)
                         base_divisor = 11000.0 * optics_modifier
                         calculated_area = a_pixels / base_divisor
                         if bbox_w > 150:        
-                            real_area_m2 = calculated_area * 5.5  # ดีดสเกลขึ้นมาให้ได้ 1.5 - 2.5 ตร.ม. ตามภาพจริง
+                            real_area_m2 = calculated_area * 5.5  # ดึงสเกลของกอใหญ่ให้ได้ปริมาตรตารางเมตรที่ถูกต้อง
                         else:
                             real_area_m2 = calculated_area
-                    else:                      # โซนระยะใกล้กล้อง
+                    else:                      # โซนหน้ากล้องระยะใกล้น้ำ
                         base_divisor = 15000.0 * optics_modifier
                         real_area_m2 = a_pixels / base_divisor
 
-                # คุมเพดานล่างของกอธรรมชาติ ไม่ให้ตัวเลขหดเล็กลงไปจนดูไม่สมเหตุสมผล
+                # ป้องกันข้อผิดพลาดไม่ให้กอผักตบธรรมชาติกลางน้ำหดเล็กผิดปกติ
                 if real_area_m2 < 0.30 and not (normalized_y > 0.80 and bbox_area < 25000):
                     real_area_m2 = 1.25 + (img_ratio * 0.5)
 
+            # ปัดเศษทศนิยมให้เรียบร้อยเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
             # -----------------------------------------------------------------
-            # 🎨 DRAWING LAYER (วาดกรอบ + จุดสีน้ำเงิน + ตัวเลข)
+            # 🎨 DRAWING LAYER (สร้างเส้นขอบประกอบภาพ)
             # -----------------------------------------------------------------
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)
+            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1) # จุดกึ่งกลางสีน้ำเงินกลับมาแล้วครับ
             cv2.putText(
                 frame,
                 f"{i + 1} ({real_area_m2} m2)",
@@ -171,12 +182,12 @@ def detect(frame, f_length, zoom):
 st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่าย</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
 
-uploaded_file = st.file_uploader("รองรับ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
 analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณปรับอัตราส่วนพื้นที่ตามคุณลักษณะเลนส์..."):
+    with st.spinner("ระบบกำลังตรวจสอบวัตถุและปรับอัตราส่วนพื้นที่ตามคุณลักษณะเลนส์..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -188,10 +199,10 @@ if uploaded_file is not None and analyze:
         if texts:
             for t in texts: st.write(t)
         else:
-            st.warning("ไม่พบกอผักตบชวาในภาพถ่ายนี้")
+            st.warning("ไม่พบกอผักตบชวาเป้าหมายในภาพถ่ายนี้")
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v2.0</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v2.5</b></div>', unsafe_allow_html=True)
