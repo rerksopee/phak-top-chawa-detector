@@ -116,7 +116,7 @@ def detect(frame):
 # =========================
 # UI หน้าเว็บ (คงเดิม คลีน ปรับใช้งานง่ายปุ่มเดียว)
 # =========================
-st.markdown("<div class="main-title">🌿 Phak Top Chawa </div><div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>", unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌿 Phak Top Chawa </div><div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
 uploaded_file = st.file_uploader("รองรับ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
 analyze = st.button("Upload")
