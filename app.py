@@ -48,7 +48,7 @@ focal_length = st.sidebar.number_input(
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=1.0, 
+    min_value=0.5, 
     max_value=50.0, 
     value=1.0, 
     step=0.1,
@@ -153,7 +153,7 @@ def detect(frame, f_length, zoom):
 # =========================
 # 6. MAIN USER INTERFACE
 # =========================
-st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่าย</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่กอผักตบชวา</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
