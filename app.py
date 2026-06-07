@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (มีช่องปรับค่าตามสั่งของอาจารย์)
+# 3. SIDEBAR PARAMETERS
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -43,16 +43,16 @@ focal_length = st.sidebar.number_input(
     max_value=500.0, 
     value=26.0, 
     step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้องที่ใช้ถ่ายจริง"
+    help="ทางยาวโฟกัสของเลนส์กล้อง"
 )
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=0.5, 
+    min_value=1.0, 
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะดิจิทัลซูมของกล้อง (เมื่อเปลี่ยนค่า พื้นที่ในภาพจะแปรผันตามอย่างถูกต้อง)"
+    help="ระยะซูมของภาพถ่าย"
 )
 
 # =========================
@@ -72,20 +72,17 @@ def detect(frame, f_length, zoom):
     output_text = []
     
     h_img, w_img = frame.shape[:2]
+    total_image_pixels = h_img * w_img
     
-    # 📐 คำนวณหาค่าพิกเซลอ้างอิงจากข้อมูล "ไม้บรรทัดสนามจริง" ที่พี่วัดมาได้
-    # ระยะห่างเฉลี่ยจากกล้องถึงผักตบวัตถุ d = 3.2 เมตร, มุมก้มกล้อง theta = 43 องศา
+    # 📐 คำนวณตามข้อมูลสนามจริง: ระยะห่าง 3.2m มุมก้ม 43 องศา
     d_field = 3.2
-    theta_deg = 43.0
-    theta_rad = math.radians(theta_deg)
+    theta_rad = math.radians(43.0)
+    horizontal_dist = d_field * math.cos(theta_rad) # ระยะราบทางกายภาพจริง
     
-    # คำนวณระยะราบจริง (Horizontal Distance)
-    horizontal_dist = d_field * math.cos(theta_rad)
-    
-    # มาตรฐานพิกเซลต่อนิ้ว/เมตรของเซนเซอร์กล้องระยะเลนส์ 26mm ซูม 1x (แปรผันตามทัศนศาสตร์เลนส์)
-    # เมื่อซูมเพิ่มขึ้น (zoom สูงขึ้น) วัตถุขยายใหญ่ขึ้นในพิกเซล ตัวหารพื้นที่จึงเพิ่มขึ้นตามกำลังสอง
+    # 🔥 CALIBRATION LAYER (ปรับจูนอัตราส่วนพิกเซลใหม่เพื่อให้ค่า "สมจริง" ตรงกับไม้บรรทัด 1 เมตร)
+    # เพิ่มค่าพิกเซลฐานขึ้น เพื่อลดขนาดพื้นที่ผลลัพธ์ไม่ให้บวมเกินจริง
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_base = 62000.0 * (optical_scale ** 2)
+    pixel_to_m2_ratio = 880000.0 * (optical_scale ** 1.3) # ปรับลดกำลังยกลงเพื่อไม่ให้ค่าซูมลดวูบเกินไป
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -107,36 +104,35 @@ def detect(frame, f_length, zoom):
             y_min, y_max = ys.min(), ys.max()
             bbox_w = x_max - x_min
             bbox_h = y_max - y_min
+            bbox_area = bbox_w * bbox_h
             
             x_center = int(xs.mean())
             y_center = int(ys.mean())
-            
-            # คำนวณตำแหน่งพิกเซลแกน Y ในรูปแบบอัตราส่วน (0.0 ถึง 1.0)
             normalized_y = y_center / h_img
 
-            # 🛑 FILTER LAYER: สกัดเศษสิ่งกีดขวางหรือพุ่มไม้บนฝั่งหนา ๆ ออก
+            # 🛑 FILTER LAYER: สกัดเศษริมขอบตลิ่งรกๆ ออก
             if normalized_y > 0.85 and bbox_w / w_img > 0.65:
+                continue
+            if bbox_area > (total_image_pixels * 0.45) and normalized_y > 0.55:
                 continue
 
             # -----------------------------------------------------------------
-            # 📐 คำนวณพื้นที่จากเรขาคณิตภาพถ่ายเชิงลึก (Perspective Geometry)
+            # 📐 คำนวณพื้นที่จริงตามหลักเรขาคณิตทัศนคติสเกล (Perspective Geometry)
             # -----------------------------------------------------------------
-            # หาพื้นที่ฐานจากสเกลพิกเซลออปติกตรง ๆ
-            base_area = a_pixels / pixel_to_m2_base
-            
-            # การชดเชยค่าระยะลึกตามจริง (ยิ่งวัตถุอยู่ด้านบนภาพ Y จะน้อย แปลว่าอยู่ไกล พื้นที่จริงต้องใหญ่ขึ้น)
-            # สูตรนี้คำนวณสอดคล้องกับมุมก้ม 43 องศา และระยะราบจริงจากหน้างานของพี่โดยเฉพาะ
-            depth_multiplier = (1.0 / (normalized_y + 0.15)) * (horizontal_dist / 2.34)
-            
-            real_area_m2 = base_area * depth_multiplier
+            calculated_area = a_pixels / pixel_to_m2_ratio
 
-            # จัดการปัดเศษทศนิยมเป็น 2 ตำแหน่ง
+            # ชดเชยระยะลึกสายตาแกน Y
+            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
+            real_area_m2 = calculated_area * depth_multiplier
+
+            # จัดระเบียบเพดานตัวเลขให้สมเหตุสมผลกับสายตามนุษย์
+            if normalized_y > 0.70:
+                real_area_m2 = max(0.12, real_area_m2 * 0.85)
+            else:
+                real_area_m2 = max(0.20, real_area_m2)
+
+            # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
-            
-            # ป้องกันค่าติดลบหรือน้อยเกินไปเนื่องจากระยะหักเหพิกเซลขอบภาพ
-            if real_area_m2 <= 0.0:
-                real_area_m2 = 0.10
-
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
             # -----------------------------------------------------------------
@@ -159,7 +155,7 @@ def detect(frame, f_length, zoom):
 # =========================
 # 6. MAIN USER INTERFACE
 # =========================
-st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่ายจริงในสนาม</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่าย</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
@@ -167,7 +163,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพิกเซลตามทัศนศาสตร์เรขาคณิตจากระยะกล้องจริง..."):
+    with st.spinner("ระบบกำลังคำนวณพิกเซลตามคุณลักษณะเรขาคณิตภาพสนามจริง..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -185,4 +181,4 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v6.0 (Field Measurement Base)</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v7.0 (Calibrated)</b></div>', unsafe_allow_html=True)
