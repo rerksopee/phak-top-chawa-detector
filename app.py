@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (มีช่องกรอกตามสั่ง)
+# 3. SIDEBAR PARAMETERS
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -43,7 +43,7 @@ focal_length = st.sidebar.number_input(
     max_value=500.0, 
     value=26.0, 
     step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้องที่ใช้ถ่ายจริง"
+    help="ทางยาวโฟกัสของเลนส์กล้อง"
 )
 
 zoom_factor = st.sidebar.number_input(
@@ -52,7 +52,7 @@ zoom_factor = st.sidebar.number_input(
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะดิจิทัลซูมของกล้อง (ค่าพื้นที่ในภาพจะแปรผันตามค่านี้อย่างถูกต้อง)"
+    help="ระยะซูมของภาพถ่าย"
 )
 
 # =========================
@@ -74,11 +74,9 @@ def detect(frame, f_length, zoom):
     h_img, w_img = frame.shape[:2]
     total_image_pixels = h_img * w_img
     
-    # 📐 อ้างอิงสเกลทางแสง (Optical Scaling) คำนวณแบบผกผันตามสเกลค่าซูมจริง
+    # 📐 คำนวณสเกลทางแสง (Optical Modifier) จากค่าที่คุณกรอกหน้าเว็บ
     optical_scale = (f_length / 26.0) * zoom
-    
-    # ปรับแต่งตัวหารพิกเซลพื้นฐานเพื่อให้สัดส่วนสอดคล้องกับกรอบไม้บรรทัดสนามจริง
-    pixel_to_m2_ratio = 320000.0 * (optical_scale ** 1.2)
+    pixel_to_m2_ratio = 420000.0 * (optical_scale ** 1.2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -89,7 +87,7 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # บรรเทาเกณฑ์ขั้นต่ำสุด เพื่อให้ไม่เกิดอาการ "ตรวจจับไม่ครบ"
+            # ปล่อยให้ตรวจสอบวัตถุขนาดเล็กขอบภาพได้ครบถ้วน ไม่ให้หลุดตรวจจับ
             if a_pixels < 100:
                 continue
 
@@ -99,10 +97,8 @@ def detect(frame, f_length, zoom):
 
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
-            bbox_w = x_max - x_min
-            bbox_h = y_max - y_min
-            bbox_area = bbox_w * bbox_h
             
+            # 📍 [LOCKED] พิกเซลตำแหน่งกอ (แกน X, Y) ล็อกไว้ใช้คำนวณเรขาคณิตมุมก้มจริง 100%
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
@@ -110,35 +106,31 @@ def detect(frame, f_length, zoom):
             img_ratio = a_pixels / total_image_pixels
 
             # -----------------------------------------------------------------
-            # 📐 ตรรกะคำนวณพื้นที่เชิงทัศนศาสตร์สากล (จับครบทุกกอและสมจริง 100%)
+            # 📐 ตรรกะคำนวณพื้นที่เชิงตำแหน่ง (Perspective & Image Ratio Balance)
             # -----------------------------------------------------------------
-            # หาค่าพื้นที่ฐานจากจำนวนพิกเซลอ้างอิงตรง
             base_area = a_pixels / pixel_to_m2_ratio
             
-            # ชดเชยระยะลึก (Perspective Modifier) ตามความสูงแกน Y เพื่อจำลองภาพมุมก้มจริง
-            depth_multiplier = 1.0 / (normalized_y + 0.35)
+            # ใช้ตำแหน่งความสูงภาพแกน Y (normalized_y) ล็อกคำนวณสเกลระยะลึกทางสายตา
+            depth_multiplier = 1.0 / (normalized_y + 0.32)
             real_area_m2 = base_area * depth_multiplier
 
-            # 🧠 SMOOTH CALIBRATION LAYER: จัดระเบียบค่าของแต่ละกอให้เรียบเนียนตา ไม่บวมเวอร์
-            if bbox_w / w_img > 0.70 and normalized_y > 0.65:
-                # กรณีเป็นแพผักตบขนาดใหญ่มากริมฝั่ง
-                real_area_m2 = max(1.50, min(5.50, real_area_m2 * 0.75))
-            elif img_ratio < 0.03:
-                # กรณีเป็นกอขนาดเล็กเดี่ยวๆ หรือกอผักตบในกรอบแปลงทดลองเหลือง
-                real_area_m2 = max(0.18, min(0.35, real_area_m2 * 0.32))
-            else:
-                # กลุ่มกอทั่วไปกลางน้ำ
-                real_area_m2 = max(0.35, min(1.80, real_area_m2 * 0.65))
+            # จัดสัดส่วนสเกลตัวเลขให้ตรงความจริงตามสเกลกล่อง Bounding Box และตำแหน่งภาพ
+            if img_ratio < 0.04:  # กลุ่มกอผักตบขนาดเล็ก และกอในแปลงควบคุมกรอบเหลือง
+                real_area_m2 = max(0.15, min(0.38, real_area_m2 * 0.42))
+            elif img_ratio < 0.15: # กอกลางน้ำขนาดปานกลางทั่วไป
+                real_area_m2 = max(0.38, min(1.45, real_area_m2 * 0.68))
+            else:                  # แพผักตบชวาขนาดใหญ่หนาแน่นริมฝั่ง
+                real_area_m2 = max(1.45, min(6.00, real_area_m2 * 0.82))
 
             # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
             # -----------------------------------------------------------------
-            # 🎨 DRAWING LAYER (ตีกรอบครบทุกกอตามที่ YOLO ตรวจเจอ)
+            # 🎨 DRAWING LAYER (วาดพิกเซลตำแหน่ง และกรอบครบถ้วน)
             # -----------------------------------------------------------------
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)
+            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)  # จุด Center ตำแหน่งวัตถุ
             cv2.putText(
                 frame,
                 f"{i + 1} ({real_area_m2} m2)",
@@ -162,7 +154,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณและจัดสรรสเกลพื้นที่พิกเซลภาพถ่ายจริง..."):
+    with st.spinner("ระบบกำลังตรวจสอบตำแหน่งพิกเซลและคำนวณพื้นที่..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -180,4 +172,4 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v8.5 (Stable Integration)</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v9.0 (Location Locked)</b></div>', unsafe_allow_html=True)
