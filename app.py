@@ -65,7 +65,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE (ปรับเหลือแค่ตัวเลขกอบนภาพถ่าย)
+# 5. CORE DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.3, iou=0.4)
@@ -120,15 +120,15 @@ def detect(frame, f_length, zoom):
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # 🛠️ [MODIFIED] ปรับแก้ให้พ่นข้อความแสดงแค่เลขกอเดด ๆ (เช่น 1, 2) ไม่ติดคำว่า ID หรือขนาดพื้นที่แล้ว
+            # 🛠️ [FONT SIZE UPGRADE] ปรับขนาดตัวอักษรเลขกอเป็น 1.2 และความหนาเป็น 3 เพื่อให้เห็นตัวใหญ่ๆ ชัดเจน
             cv2.putText(
                 frame,
                 f"{i + 1}",
-                (x_min, y_min - 10),
+                (x_min, y_min - 12),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
+                1.2,
                 (0, 0, 255),
-                2
+                3
             )
 
     return frame, output_text
