@@ -6,7 +6,7 @@ from PIL import Image
 import math
 
 # =========================
-# 1. PAGE CONFIGURATION (คงเดิม 100% ตามที่พี่ส่งมา)
+# 1. PAGE CONFIGURATION
 # =========================
 st.set_page_config(
     page_title="Phak Top Chawa Detector",
@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (คงเดิม 100% ตามที่พี่ส่งมา)
+# 2. CSS CUSTOM DESIGN
 # =========================
 st.markdown("""
 <style>
@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (คงเดิมตามที่พี่ส่งมา รองรับซูม 0.5 เผื่อกล้องมือถือ)
+# 3. SIDEBAR PARAMETERS
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -48,7 +48,7 @@ focal_length = st.sidebar.number_input(
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=0.5, # รองรับ 0.5x ตามที่พี่ตั้งค่าไว้เรียบร้อยครับ
+    min_value=0.5, 
     max_value=50.0, 
     value=1.0, 
     step=0.1,
@@ -65,7 +65,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE (ปรับปรุงเฉพาะสูตรคณิตศาสตร์หลังบ้าน)
+# 5. CORE DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.3, iou=0.4)
@@ -73,15 +73,12 @@ def detect(frame, f_length, zoom):
     
     h_img, w_img = frame.shape[:2]
     
-    # 📐 ตรรกะอ้างอิงระยะจริงหน้างาน (3.2 เมตร มุมก้ม 43 องศา)
     d_field = 3.2
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # ปรับแต่งความสัมพันธ์ของทางยาวโฟกัสและตัวคูณซูมหลังบ้าน 
-    # รองรับการลดทอนสเกลพิกเซลเมื่อผู้ใช้ปรับเป็นเลนส์มุมกว้าง 0.5x เพื่อไม่ให้ค่าดีดแกว่งรุนแรง
-    optical_scale = (f_length / 26.0)
-    pixel_to_m2_ratio = 78000.0 * (optical_scale ** 1.2) * (zoom ** 1.8)
+    optical_scale = (f_length / 26.0) * zoom
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -102,31 +99,26 @@ def detect(frame, f_length, zoom):
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
             
-            # 📍 ตรรกะตำแหน่งพิกเซลแกน X, Y และการพล็อตวงกลมสีน้ำเงิน (Center Point) ดั้งเดิมของพี่
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
             normalized_y = y_center / h_img
 
-            # คำนวณพื้นที่จริงอ้างอิงตามสเกลความจริงหน้างานที่พี่ต้องการ (สเกลแพยาวริมตลิ่ง ~6 ตร.ม.)
             calculated_area = a_pixels / pixel_to_m2_ratio
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # จัดบาลานซ์เกลี่ยค่าตามระดับความลึกของภาพ ไม่ให้ค่าบวมเวอร์เกินไป
             if normalized_y > 0.70:
-                real_area_m2 = max(0.20, real_area_m2 * 0.85)
+                real_area_m2 = max(0.12, real_area_m2 * 0.85)
             else:
-                real_area_m2 = max(0.35, real_area_m2)
+                real_area_m2 = max(0.20, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
             
-            # 📋 แสดงผล ลำดับ พื้นที่จริง และพิกเซลตำแหน่ง (X, Y) ครบถ้วนตามเดิม
-            output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
+            output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # 🎨 DRAWING LAYER (ตีกรอบ และพล็อตจุดตำแหน่งเดิมเป๊ะ ๆ)
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  # พล็อตวงกลมจุดตำแหน่งสีน้ำเงินตรงกลาง
+            cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
             cv2.putText(
                 frame,
@@ -141,9 +133,9 @@ def detect(frame, f_length, zoom):
     return frame, output_text
 
 # =========================
-# 6. MAIN USER INTERFACE (ส่วนแสดงผลด้านล่าง คงหน้าตาเดิมไว้ทั้งหมด)
+# 6. MAIN USER INTERFACE
 # =========================
-st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่าย</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
@@ -151,7 +143,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณและประมวลผลพิกเซลระบุตำแหน่ง..."):
+    with st.spinner("ระบบกำลังคำนวณ"):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -159,14 +151,12 @@ if uploaded_file is not None and analyze:
         result_frame, texts = detect(frame, focal_length, zoom_factor)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        st.subheader("📋 ผลการคำนวณพื้นที่และพิกเซลตำแหน่ง")
+        st.subheader("📋 ผลการตรวจจับ")
         if texts:
             for t in texts: st.write(t)
         else:
             st.warning("ไม่พบกอผักตบชวาเป้าหมายในภาพถ่ายนี้")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("🖼️ ภาพผลการตรวจจับและจุดพิกเซลตำแหน่ง")
+        st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
-
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v10.0 (Fixed UI & 0.5x Wide-Lens Calibrated)</b></div>', unsafe_allow_html=True)
