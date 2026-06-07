@@ -65,7 +65,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE (ปรับแก้ไขสูตรความสัมพันธ์ของ Zoom ใหม่หลังบ้าน)
+# 5. CORE DETECTION ENGINE (แก้สูตรเกลี่ยหน้าซูมใหม่ทั้งหมดเพื่อความสมจริงหน้างาน)
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.3, iou=0.4)
@@ -77,10 +77,18 @@ def detect(frame, f_length, zoom):
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 📐 [BACKEND CALIBRATION] ปรับสูตรการคูณซูมไม่ให้โตเกินจริงตามระนาบทัศนศาสตร์
-    # ปรับให้เมื่อซูมเยอะขึ้น ตัวหารจะไม่บวมจนทำลายค่าพื้นที่จริงของกอผักตบชวา
+    # 📐 [CALIBRATION] ปรับสมการความสัมพันธ์เชิงเลนส์กล้องใหม่
+    # แทนที่จะคูณ zoom ไปตรงๆ จนพิกเซลบวมและเพี้ยนหนัก ให้ใช้สัดส่วนทอนกำลังสองทัศนศาสตร์แทน
     optical_scale = (f_length / 26.0)
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2) * (zoom ** 0.55)
+    base_ratio = 185000.0 * (optical_scale ** 1.2)
+    
+    # ตัวชดเชยค่าซูมแบบคงที่ ไม่ให้พื้นที่รวมดีดเกินขนาดกรอบไม้ไผ่ 1 ตร.ม.
+    if zoom > 1.0:
+        zoom_modifier = 1.0 + (zoom - 1.0) * 1.55
+    else:
+        zoom_modifier = zoom
+        
+    pixel_to_m2_ratio = base_ratio * zoom_modifier
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -110,10 +118,11 @@ def detect(frame, f_length, zoom):
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
+            # เกลี่ยสเกลตามระดับความลึกของภาพถ่าย (Perspective Balance)
             if normalized_y > 0.70:
-                real_area_m2 = max(0.12, real_area_m2 * 0.85)
+                real_area_m2 = max(0.12, real_area_m2 * 0.75)
             else:
-                real_area_m2 = max(0.20, real_area_m2)
+                real_area_m2 = max(0.20, real_area_m2 * 0.90)
 
             real_area_m2 = round(real_area_m2, 2)
             
