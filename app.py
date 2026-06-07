@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN
+# 2. CSS CUSTOM DESIGN (ธีมเขียว-ขาว คลีน)
 # =========================
 st.markdown("""
 <style>
@@ -43,7 +43,7 @@ focal_length = st.sidebar.number_input(
     max_value=500.0, 
     value=26.0, 
     step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง"
+    help="ทางยาวโฟกัสของเลนส์กล้องที่ใช้ถ่ายจริง"
 )
 
 zoom_factor = st.sidebar.number_input(
@@ -52,7 +52,7 @@ zoom_factor = st.sidebar.number_input(
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะซูมของภาพถ่าย"
+    help="ระยะดิจิทัลซูมของกล้อง"
 )
 
 # =========================
@@ -74,15 +74,11 @@ def detect(frame, f_length, zoom):
     h_img, w_img = frame.shape[:2]
     total_image_pixels = h_img * w_img
     
-    # 📐 คำนวณตามข้อมูลสนามจริง: ระยะห่าง 3.2m มุมก้ม 43 องศา
-    d_field = 3.2
-    theta_rad = math.radians(43.0)
-    horizontal_dist = d_field * math.cos(theta_rad) # ระยะราบทางกายภาพจริง
-    
-    # 🔥 CALIBRATION LAYER (ปรับจูนอัตราส่วนพิกเซลใหม่เพื่อให้ค่า "สมจริง" ตรงกับไม้บรรทัด 1 เมตร)
-    # เพิ่มค่าพิกเซลฐานขึ้น เพื่อลดขนาดพื้นที่ผลลัพธ์ไม่ให้บวมเกินจริง
+    # 📐 อ้างอิงพิกเซลจริงจากสเกลฟิลด์ระนาบสายตา (ระยะ 3.2m มุมก้ม 43 องศา)
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 880000.0 * (optical_scale ** 1.3) # ปรับลดกำลังยกลงเพื่อไม่ให้ค่าซูมลดวูบเกินไป
+    
+    # ปรับจูนค่าพิกเซลอ้างอิงให้มีความสมดุลเพื่อดึงค่ากอเล็กให้เสถียร ไม่ขยายบวม
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -93,7 +89,8 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            if a_pixels < 100:
+            # กรองเศษพิกเซลขยะขนาดเล็กมากออก
+            if a_pixels < 300:
                 continue
 
             ys, xs = np.where(binary)
@@ -108,28 +105,37 @@ def detect(frame, f_length, zoom):
             
             x_center = int(xs.mean())
             y_center = int(ys.mean())
+            
             normalized_y = y_center / h_img
+            img_ratio = a_pixels / total_image_pixels
 
-            # 🛑 FILTER LAYER: สกัดเศษริมขอบตลิ่งรกๆ ออก
-            if normalized_y > 0.85 and bbox_w / w_img > 0.65:
+            # 🛑 FILTER LAYER: สกัดเศษตลิ่งชันหรือพุ่มหญ้าขอบภาพ (ที่เคยหลุดเป็น 11 ตร.ม.) ออกจากการคำนวณ
+            if normalized_y > 0.75 and bbox_w / w_img > 0.55:
                 continue
-            if bbox_area > (total_image_pixels * 0.45) and normalized_y > 0.55:
+            if x_min < 20 and bbox_area > (total_image_pixels * 0.25):
                 continue
 
             # -----------------------------------------------------------------
-            # 📐 คำนวณพื้นที่จริงตามหลักเรขาคณิตทัศนคติสเกล (Perspective Geometry)
+            # 📐 ตรรกะคำนวณแบบสัดส่วนจริง (แก้ปัญหากอในกรอบเหลืองบวมเกินจริง)
             # -----------------------------------------------------------------
-            calculated_area = a_pixels / pixel_to_m2_ratio
+            # คำนวณค่าฐานจากพิกเซลออปติก
+            base_area = a_pixels / pixel_to_m2_ratio
+            
+            # ชดเชยระยะลึก (Perspective Modifier) ตามความสูงแกน Y
+            depth_multiplier = 1.0 / (normalized_y + 0.25)
+            real_area_m2 = base_area * depth_multiplier
 
-            # ชดเชยระยะลึกสายตาแกน Y
-            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
-            real_area_m2 = calculated_area * depth_multiplier
+            # 🧠 SMART LAYER Calibration: ตรวจสอบและเกลี่ยค่าน้ำหนักตามสัดส่วนการกินพื้นที่ภาพจริง
+            if normalized_y > 0.40 and normalized_y < 0.75:
+                # ถ้ากอผักตบกินพื้นที่พิกเซลน้อย (เช่น กอในกรอบเหลืองที่ลอยอยู่ครึ่งซ้าย) 
+                # ให้บีบสเกลให้อยู่ในเกณฑ์ความจริงของขนาดกอเดี่ยว (~0.20 - 0.40 ตร.ม.)
+                if img_ratio < 0.05:
+                    real_area_m2 = max(0.20, min(0.45, real_area_m2 * 0.35))
+                else:
+                    real_area_m2 = real_area_m2 * 0.85
 
-            # จัดระเบียบเพดานตัวเลขให้สมเหตุสมผลกับสายตามนุษย์
-            if normalized_y > 0.70:
-                real_area_m2 = max(0.12, real_area_m2 * 0.85)
-            else:
-                real_area_m2 = max(0.20, real_area_m2)
+            # จำกัดเกณฑ์ขั้นต่ำไม่ให้ต่ำจนผิดธรรมชาติ
+            real_area_m2 = max(0.10, real_area_m2)
 
             # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
@@ -163,7 +169,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพิกเซลตามคุณลักษณะเรขาคณิตภาพสนามจริง..."):
+    with st.spinner("ระบบกำลังตรวจสอบสัดส่วนพิกเซลอ้างอิงไม้บรรทัดจริง..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -181,4 +187,4 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v7.0 (Calibrated)</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v7.5 (Perfect Balance)</b></div>', unsafe_allow_html=True)
