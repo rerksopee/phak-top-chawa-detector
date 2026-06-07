@@ -139,7 +139,7 @@ st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div clas
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
-analyze = st.button("ประมวลผลภาพ")
+analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
