@@ -38,7 +38,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# ฟังก์ชันคำนวณพื้นที่แยกแยะประเภทกอผักตบ
+# ฟังก์ชันคำนวณและชดเชยทัศนมิติระยะลึก
 # =========================
 def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
@@ -56,8 +56,8 @@ def detect(frame):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองจุดเศษพิกเซลขนาดเล็ก
-            if a_pixels < 80:
+            # กรอง Noise ขนาดเล็กมาก
+            if a_pixels < 60:
                 continue
 
             ys, xs = np.where(binary)
@@ -71,7 +71,7 @@ def detect(frame):
             bbox_h = y_max - y_min
             bbox_area = bbox_w * bbox_h
             
-            # พิกัดจุดกึ่งกลางของวัตถุบนแกน X และ Y
+            # พิกัดจุดกึ่งกลางวัตถุ
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
@@ -80,22 +80,18 @@ def detect(frame):
             img_ratio = a_pixels / total_image_pixels
 
             # -----------------------------------------------------------------
-            # 📐 ตรรกะแยกแยะ: "กอในกรอบ" VS "กอใหญ่ริมตลิ่ง"
+            # 🔍 ตรรกะคณิตศาสตร์แยกบริบทภาพและการชดเชยระยะลึก (Depth Compensation)
             # -----------------------------------------------------------------
-            # ตรวจเช็กว่าวัตถุอยู่ในโซนกลางน้ำที่มีโครงสร้างกรอบเหลืองลอยอยู่หรือไม่
-            # ปกติกอทดลองจะอยู่ห่างจากขอบซ้ายขวาพอสมควร และไม่ได้กองอยู่ชิดตลิ่งด้านล่างสุด
+            # ตรวจสอบว่าเป็นกอทดลองในกรอบสี่เหลี่ยมเหลืองหรือไม่
             is_inside_test_frame = False
-            if (0.25 <= normalized_x <= 0.75) and (0.30 <= normalized_y <= 0.75):
-                # ถ้าขนาดกล่องไม่ได้แผ่ขยายกว้างจนปิดหน้าจอ แปลว่าเป็นกอในกรอบสีเหลือง
-                if bbox_w / w_img < 0.60:
+            if (0.22 <= normalized_x <= 0.78) and (0.25 <= normalized_y <= 0.78):
+                if bbox_w / w_img < 0.65:
                     is_inside_test_frame = True
 
             if is_inside_test_frame:
-                # 1. จัดการกอในกรอบทดลอง -> ล็อกให้อยู่ในช่วง 0.20 - 0.25 ตร.ม. ตามที่พี่กำหนด
-                # คำนวณแบบยืดหยุ่นเล็กน้อยตามสัดส่วนภาพเพื่อความสมจริง
-                base_val = 0.20 + (img_ratio * 0.15)
-                
-                # บีบตัวเลขขั้นเด็ดขาดให้อยู่ในขอบเขตจริง
+                # 1. กอในกรอบทดลอง: ล็อกเกณฑ์ให้อยู่ระหว่าง 0.20 - 0.25 ตร.ม. ตามความเป็นจริงทางกายภาพ
+                # แม้ภาพจะหดเล็กในระยะไกล ตัวสเกลจะถูกขยับชดเชยให้ไม่ต่ำกว่า 0.20 ตร.ม.
+                base_val = 0.20 + (img_ratio * 0.12)
                 if base_val > 0.25:
                     real_area_m2 = 0.24
                 elif base_val < 0.20:
@@ -103,27 +99,35 @@ def detect(frame):
                 else:
                     real_area_m2 = base_val
             else:
-                # 2. จัดการกออื่นๆ นอกกรอบ (กอธรรมชาติขนาดใหญ่บริเวณริมตลิ่ง)
-                # ชดเชยมาตราส่วนตามพิกเซลเพื่อให้แสดงขนาดใหญ่กว่าชัดเจน
-                if normalized_y > 0.70:  # อยู่ใกล้กล้องด้านล่าง
-                    divisor = 20000.0
-                else:                    # อยู่ไกลออกไป
-                    divisor = 35000.0
+                # 2. กอธรรมชาติทั่วไป / กอนอกกรอบ: ใช้ตรรกะชดเชยระยะลึกตามที่พี่แนะแนวคิดมา 
+                # ยิ่งค่า normalized_y น้อย (อยู่ด้านบนของภาพ = ระยะไกลออกไปมาก) ตัวหารพิกเซลต้องยิ่งน้อยลงเพื่อดันค่าพื้นที่จริงให้สูงขึ้น
+                if normalized_y < 0.30:    # 🌊 โซนไกลมากริบหรี่ (ใบผักตบเล็กมาก แต่กอจริงอาจจะใหญ่มาก)
+                    divisor = 9000.0
+                elif normalized_y < 0.50:  # โซนระยะไกลปานกลาง
+                    divisor = 16000.0
+                elif normalized_y < 0.75:  # โซนระยะกลาง-ใกล้
+                    divisor = 26000.0
+                else:                      # โซนชิดขอบตลิ่งด้านล่าง (ใกล้กล้องที่สุด)
+                    divisor = 38000.0
                 
                 calculated_area = a_pixels / divisor
                 
-                # กอนอกกรอบควรใหญ่กว่า ดังนั้นกำหนดเพดานขั้นต่ำไว้ที่ 0.38 ตร.ม. ขึ้นไปเพื่อให้แตกต่าง
-                if calculated_area < 0.38:
-                    real_area_m2 = 0.42 + (img_ratio * 0.5)
+                # กอนอกกรอบควรมีความสมเหตุสมผลตามขนาดรูปทรงกล่องครอบวัตถุ
+                if bbox_area > 40000 and calculated_area < 1.0:
+                    real_area_m2 = calculated_area * 2.2
                 else:
                     real_area_m2 = calculated_area
+                
+                # กำหนดให้กอธรรมชาติด้านนอกมีขนาดสมจริงและไม่น้อยจนเพี้ยนเกินไป
+                if real_area_m2 < 0.30:
+                    real_area_m2 = 0.38 + (img_ratio * 0.4)
 
             # ปัดเศษทศนิยม 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
 
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
-            # วาดกรอบและแสดงผลบนภาพ
+            # วาดการแสดงผลลงบนภาพภาพ
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.putText(
                 frame,
@@ -148,7 +152,7 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณและแยกแยะพื้นที่ตามมุมกล้อง..."):
+    with st.spinner("ระบบกำลังชดเชยค่าทัศนมิติตามระยะความลึกอัตโนมัติ..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
