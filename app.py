@@ -65,7 +65,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE (แก้สูตรเกลี่ยหน้าซูมใหม่ทั้งหมดเพื่อความสมจริงหน้างาน)
+# 5. CORE DETECTION ENGINE (ปรับเหลือแค่ตัวเลขกอบนภาพถ่าย)
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.3, iou=0.4)
@@ -77,18 +77,8 @@ def detect(frame, f_length, zoom):
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 📐 [CALIBRATION] ปรับสมการความสัมพันธ์เชิงเลนส์กล้องใหม่
-    # แทนที่จะคูณ zoom ไปตรงๆ จนพิกเซลบวมและเพี้ยนหนัก ให้ใช้สัดส่วนทอนกำลังสองทัศนศาสตร์แทน
-    optical_scale = (f_length / 26.0)
-    base_ratio = 185000.0 * (optical_scale ** 1.2)
-    
-    # ตัวชดเชยค่าซูมแบบคงที่ ไม่ให้พื้นที่รวมดีดเกินขนาดกรอบไม้ไผ่ 1 ตร.ม.
-    if zoom > 1.0:
-        zoom_modifier = 1.0 + (zoom - 1.0) * 1.55
-    else:
-        zoom_modifier = zoom
-        
-    pixel_to_m2_ratio = base_ratio * zoom_modifier
+    optical_scale = (f_length / 26.0) * zoom
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -118,11 +108,10 @@ def detect(frame, f_length, zoom):
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # เกลี่ยสเกลตามระดับความลึกของภาพถ่าย (Perspective Balance)
             if normalized_y > 0.70:
-                real_area_m2 = max(0.12, real_area_m2 * 0.75)
+                real_area_m2 = max(0.12, real_area_m2 * 0.85)
             else:
-                real_area_m2 = max(0.20, real_area_m2 * 0.90)
+                real_area_m2 = max(0.20, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
             
@@ -131,12 +120,13 @@ def detect(frame, f_length, zoom):
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
+            # 🛠️ [MODIFIED] ปรับแก้ให้พ่นข้อความแสดงแค่เลขกอเดด ๆ (เช่น 1, 2) ไม่ติดคำว่า ID หรือขนาดพื้นที่แล้ว
             cv2.putText(
                 frame,
-                f"ID:{i + 1} ({real_area_m2} m2)",
+                f"{i + 1}",
                 (x_min, y_min - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.6,
                 (0, 0, 255),
                 2
             )
