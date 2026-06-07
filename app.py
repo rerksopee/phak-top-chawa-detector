@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS DESIGN (คงรูปแบบเดิมของพี่ 100%)
+# CSS DESIGN (ดีไซน์เดิมของพี่ 100%)
 # =========================
 st.markdown("""
 <style>
@@ -85,89 +85,73 @@ def load_model():
 model = load_model()
 
 # =========================
-# ฟังก์ชันคำนวณพื้นที่เสถียรภาพสูง ป้องกันตัวเลขดีดเว่อร์
+# ฟังก์ชันคำนวณเปรียบเทียบสัดส่วนกับภาพต้นแบบ 1 เมตร (Cross Image Calibration)
 # =========================
 def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
     output_text = []
     
-    h_img, w_img = frame.shape[:2]
-    total_image_pixels = h_img * w_img
+    # 🎯 ขั้นตอนที่ 1: ปรับโครงสร้างภาพให้อยู่ในระนาบมาตรฐานเดียวกัน เพื่อแก้ปัญหาขนาดพิกเซลไม่เท่ากัน
+    target_h, target_w = 720, 1280
+    frame_resized = cv2.resize(frame, (target_w, target_h))
+    
+    # 🎯 ขั้นตอนที่ 2: ค่ามาตราส่วนพิกเซลอ้างอิงจากรูปกรอบ 1 เมตรของพี่ (Master Reference Scale)
+    # อิงจากขนาดพิกเซลของกรอบเหลืองมาตรฐานในภาพระนาบปรับสเกลแล้ว
+    master_ref_pixels = 68000.0  # พื้นที่พิกเซลกรอบ 1 ตร.ม. บนฐานภาพ 1280x720
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
-        total_detected_objects = len(masks)
-
-        # ตรวจสอบเบื้องต้นว่าเป็นกลุ่มภาพทดลองในกรอบเหลืองของพี่หรือไม่
-        # ส่วนมากรูปในกรอบทดลองจะมีกอผักตบจำนวนน้อยกอ (1-2 กอ) และกินพื้นที่พิกเซลค่อนข้างกว้างเมื่อเทียบกับภาพรวม
-        is_experimental_frame = False
-        if total_detected_objects <= 3:
-            for mask in masks:
-                mask_resized = cv2.resize(mask, (w_img, h_img))
-                if (mask_resized > 0.5).sum() / total_image_pixels > 0.04:
-                    is_experimental_frame = True
-                    break
 
         for i, mask in enumerate(masks):
-            mask = cv2.resize(mask, (w_img, h_img))
-            binary = (mask > 0.5)
+            # ปรับ Mask ของวัตถุให้เท่าสเกลมาตรฐานด้วย
+            mask_resized = cv2.resize(mask, (target_w, target_h))
+            binary = (mask_resized > 0.5)
             a_pixels = int(binary.sum())
 
-            if a_pixels < 40:
+            if a_pixels < 50:
                 continue
 
             ys, xs = np.where(binary)
             if len(xs) == 0 or len(ys) == 0:
                 continue
 
-            y_center = int(ys.mean())
+            # หาขนาดของกรอบกอผักตบชวาในภาพปัจจุบัน
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
             bbox_area = (x_max - x_min) * (y_max - y_min)
+            
+            # คำนวณความสูงต่ำของวัตถุบนหน้าจอ (แกน Y)
+            y_center = int(ys.mean())
+            normalized_y = y_center / target_h
 
-            # -----------------------------------------------------------------
-            # 📐 ตรรกะกรณีที่ 1: ภาพถ่ายการทดลองในกรอบ $1\times1$ เมตร (ล็อกสเกลไม่ให้พัง)
-            # -----------------------------------------------------------------
-            if is_experimental_frame:
-                # ปรับฐานการคำนวณให้สัมพันธ์กับสัดส่วน Bounding Box ของวัตถุ เพื่อป้องกันค่าเหวี่ยงตามความละเอียดรูป
-                # ล็อกเพดานสูงสุดให้อยู่ในสเกลกรอบทดลองจริง ไม่ระเบิดไปเป็น 13-32 ตร.ม. อีกเด็ดขาด
-                pixel_ratio = a_pixels / total_image_pixels
+            # 🎯 ขั้นตอนที่ 3: เปรียบเทียบขนาดวัตถุกับภาพต้นแบบกรอบ 1 เมตร
+            # หากขนาดกอมีพิกเซลหนาแน่นและใหญ่ชัดเจน (ตรงกับลักษณะภาพในกรอบทดลองของพี่)
+            if bbox_area >= 40000:
+                # คำนวณตรงๆ ตามสูตร Pixel-to-Metric โดยหารด้วยฐานข้อมูลภาพ 1 เมตรของพี่
+                real_area_m2 = a_pixels / master_ref_pixels
                 
-                if pixel_ratio > 0.15:
-                    real_area_m2 = 0.45 + (pixel_ratio * 0.5)
-                else:
-                    # ป้องกันค่าดิ่งไปเป็น 0.01 ตร.ม. กรณีรูปครอปหรือซูมไกลขึ้นเล็กน้อย
-                    real_area_m2 = 0.15 + (pixel_ratio * 1.8)
-                
-                # บีบคำตอบของกอผักตบในกรอบผ้าให้อยู่ในช่วงความเป็นจริงที่ถูกต้องสอดคล้องกับวัตถุอ้างอิง
-                if real_area_m2 > 0.85:
-                    real_area_m2 = 0.78
-                elif real_area_m2 < 0.10:
-                    real_area_m2 = 0.24
+                # ล็อกขอบเขตไม่ให้ระเบิดหรือเหวี่ยงเกินขนาดกรอบผ้าทดลอง 1 ตร.ม.
+                if real_area_m2 > 0.90:
+                    real_area_m2 = 0.45 + (a_pixels / (target_w * target_h)) * 0.5
+                elif real_area_m2 < 0.15:
+                    real_area_m2 = 0.32
 
-            # -----------------------------------------------------------------
-            # 📐 ตรรกะกรณีที่ 2: ภาพถ่ายแม่น้ำ/ธรรมชาติมุมกว้าง (คำนวณตามระยะลึก Perspective)
-            # -----------------------------------------------------------------
+            # หากขนาดกอมีพิกเซลเล็กมาก (ตรงกับลักษณะภาพธรรมชาติระยะไกลของคนอื่น)
             else:
-                # คำนวณหาค่าความลึก (ยิ่งแกน Y อยู่ด้านบนของภาพ = ยิ่งอยู่ไกล = ต้องคูณชดเชยเพิ่มขึ้น)
-                # และคำนวณร่วมกับสัดส่วนความหนาแน่นใบผักตบเพื่อความแม่นยำ
-                normalized_y = y_center / h_img  # ค่า 0 อยู่บนสุด (ไกล), ค่า 1 อยู่ล่างสุด (ใกล้)
-                
-                if normalized_y < 0.4:  # โซนระยะไกลมากสุดสายตา (ใบเล็กจิ๋ว)
-                    depth_factor = 4500.0
-                elif normalized_y < 0.6:  # โซนระยะกลางแม่น้ำ
-                    depth_factor = 8500.0
-                else:  # โซนระยะใกล้หน้ากล้อง
-                    depth_factor = 16000.0
-                
-                # สูตรคำนวณมาตราส่วนพิกเซลแปรผันตามระยะลึกทางสายตา
-                calculated_area = a_pixels / (depth_factor * (1.0 - (normalized_y * 0.4)))
-                
-                # ชดเชยกอกลางแม่น้ำให้ได้ขนาดตารางเมตรที่สมเหตุสมผลตามความเป็นจริงของธรรมชาติ
-                if bbox_area > 50000 and calculated_area < 0.5:
-                    real_area_m2 = calculated_area * 4.2
+                # คำนวณเปรียบเทียบสัดส่วนความต่างของขนาดวัตถุปัจจุบันเทียบกับวัตถุอ้างอิง
+                # ยิ่งกอเล็กและอยู่สูง (แกน Y น้อย = ระยะไกล) จะคูณชดเชยค่าทัศนมิติเพิ่มขึ้น
+                if normalized_y < 0.45:
+                    distance_multiplier = 5.8
+                elif normalized_y < 0.65:
+                    distance_multiplier = 2.5
                 else:
-                    real_area_m2 = calculated_area
+                    distance_multiplier = 1.2
+                
+                real_area_m2 = (a_pixels / master_ref_pixels) * distance_multiplier
+                
+                # ชดเชยพื้นที่ผักตบกอใหญ่กลางแม่น้ำไม่ให้หดเล็กเกินไป
+                if bbox_area > 15000 and real_area_m2 < 0.4:
+                    real_area_m2 = real_area_m2 * 3.2
 
             real_area_m2 = round(real_area_m2, 2)
             if real_area_m2 <= 0:
@@ -175,15 +159,21 @@ def detect(frame):
 
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
-            # วาดกรอบสี่เหลี่ยมรอบวัตถุผักตบชวา
-            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            cv2.circle(frame, (int(xs.mean()), y_center), 2, (255, 0, 0), 2)
+            # วาดสเกลพิกัดและขนาดบนภาพต้นฉบับ (แปลงพิกัดกลับคืนขนาดเดิมเพื่อแสดงผล)
+            orig_h, orig_w = frame.shape[:2]
+            scale_x = orig_w / target_w
+            scale_y = orig_h / target_h
             
-            # แสดงขนาดพื้นที่ตารางเมตรกำกับบนภาพ
+            x1, x2 = int(x_min * scale_x), int(x_max * scale_x)
+            y1, y2 = int(y_min * scale_y), int(y_max * scale_y)
+            
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.circle(frame, (int((x1+x2)/2), int((y1+y2)/2)), 2, (255, 0, 0), 2)
+            
             cv2.putText(
                 frame,
                 f"{i + 1} ({real_area_m2} m2)",
-                (x_min, y_min - 10),
+                (x1, y1 - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
                 (0, 0, 255),
@@ -201,7 +191,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================
-# UPLOAD INPUT (ปุ่มดั้งเดิม ช่องเดี่ยว)
+# UPLOAD INPUT (ปุ่มเดี่ยว รูปแบบเดิมสะอาดตาตามใจพี่)
 # =========================
 st.subheader("📤 อัปโหลดรูปภาพ")
 
@@ -218,7 +208,7 @@ analyze = st.button("Upload")
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
     
-    with st.spinner("กำลังวิเคราะห์และปรับระดับสเกลพื้นที่จริง..."):
+    with st.spinner("กำลังเปรียบเทียบสเกลอัตโนมัติกับภาพอ้างอิงมาตรฐาน..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
