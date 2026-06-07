@@ -65,7 +65,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE
+# 5. CORE DETECTION ENGINE (ปรับแก้เฉพาะคณิตศาสตร์หลังบ้านให้สมจริงกับระนาบซูม)
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.3, iou=0.4)
@@ -77,8 +77,10 @@ def detect(frame, f_length, zoom):
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2)
+    # 📐 [BACKEND CALIBRATION] ปรับตรรกะความสัมพันธ์ของเลนส์ซูมกับขนาดพิกเซลที่บวมขึ้นเชิงแสง
+    # แยกส่วน Focal length คงที่ และปรับสมการกำลัง Zoom ให้เกลี่ยสัดส่วนได้สมเหตุสมผล ไม่ดิ่งจนเพี้ยน
+    optical_scale = (f_length / 26.0)
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2) * (zoom ** 0.62)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -133,7 +135,7 @@ def detect(frame, f_length, zoom):
     return frame, output_text
 
 # =========================
-# 6. MAIN USER INTERFACE
+# 6. MAIN USER INTERFACE (หน้าเว็บ เมนู และปุ่มคงเดิมตามพี่สั่ง 100%)
 # =========================
 st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
