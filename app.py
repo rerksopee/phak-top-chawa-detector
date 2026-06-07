@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมเขียว-ขาว)
+# 2. CSS CUSTOM DESIGN
 # =========================
 st.markdown("""
 <style>
@@ -72,11 +72,14 @@ def detect(frame, f_length, zoom):
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_image_pixels = h_img * w_img
     
-    # 📐 คำนวณสเกลทางแสง (Optical Modifier) จากค่าที่คุณกรอกหน้าเว็บ
+    # 📐 คำนวณสเกลทางแสงอ้างอิงระยะจริง (ระยะราบกายภาพ 3.2 เมตร แกนองศา 43)
+    d_field = 3.2
+    theta_rad = math.radians(43.0)
+    horizontal_dist = d_field * math.cos(theta_rad)
+    
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 420000.0 * (optical_scale ** 1.2)
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -87,7 +90,7 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # ปล่อยให้ตรวจสอบวัตถุขนาดเล็กขอบภาพได้ครบถ้วน ไม่ให้หลุดตรวจจับ
+            # รักษาระดับเกณฑ์พิกเซลต่ำสุดไว้ เพื่อให้ตรวจจับได้ครบทุกกอ ไม่หลุด
             if a_pixels < 100:
                 continue
 
@@ -98,39 +101,36 @@ def detect(frame, f_length, zoom):
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
             
-            # 📍 [LOCKED] พิกเซลตำแหน่งกอ (แกน X, Y) ล็อกไว้ใช้คำนวณเรขาคณิตมุมก้มจริง 100%
+            # 📍 เก็บพิกเซลตำแหน่งกอ (Center แกน X, Y) ของพี่ไว้ครบถ้วน
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
             normalized_y = y_center / h_img
-            img_ratio = a_pixels / total_image_pixels
 
             # -----------------------------------------------------------------
-            # 📐 ตรรกะคำนวณพื้นที่เชิงตำแหน่ง (Perspective & Image Ratio Balance)
+            # 📐 [BACK TO ORIGINAL] ตรรกะคำนวณเชิงตำแหน่งแบบเดิมเป๊ะ ๆ 
             # -----------------------------------------------------------------
-            base_area = a_pixels / pixel_to_m2_ratio
+            calculated_area = a_pixels / pixel_to_m2_ratio
             
-            # ใช้ตำแหน่งความสูงภาพแกน Y (normalized_y) ล็อกคำนวณสเกลระยะลึกทางสายตา
-            depth_multiplier = 1.0 / (normalized_y + 0.32)
-            real_area_m2 = base_area * depth_multiplier
+            # ชดเชยระยะลึกสายตา (Perspective) อิงตามพิกเซลแกน Y ดั้งเดิม
+            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
+            real_area_m2 = calculated_area * depth_multiplier
 
-            # จัดสัดส่วนสเกลตัวเลขให้ตรงความจริงตามสเกลกล่อง Bounding Box และตำแหน่งภาพ
-            if img_ratio < 0.04:  # กลุ่มกอผักตบขนาดเล็ก และกอในแปลงควบคุมกรอบเหลือง
-                real_area_m2 = max(0.15, min(0.38, real_area_m2 * 0.42))
-            elif img_ratio < 0.15: # กอกลางน้ำขนาดปานกลางทั่วไป
-                real_area_m2 = max(0.38, min(1.45, real_area_m2 * 0.68))
-            else:                  # แพผักตบชวาขนาดใหญ่หนาแน่นริมฝั่ง
-                real_area_m2 = max(1.45, min(6.00, real_area_m2 * 0.82))
+            # จัดสัดส่วนตามระดับความสูงของพิกเซลแกน Y ดั้งเดิม
+            if normalized_y > 0.70:
+                real_area_m2 = max(0.12, real_area_m2 * 0.85)
+            else:
+                real_area_m2 = max(0.20, real_area_m2)
 
             # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
             # -----------------------------------------------------------------
-            # 🎨 DRAWING LAYER (วาดพิกเซลตำแหน่ง และกรอบครบถ้วน)
+            # 🎨 DRAWING LAYER
             # -----------------------------------------------------------------
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)  # จุด Center ตำแหน่งวัตถุ
+            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)  # แสดงจุดตำแหน่งวัตถุ
             cv2.putText(
                 frame,
                 f"{i + 1} ({real_area_m2} m2)",
@@ -154,7 +154,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังตรวจสอบตำแหน่งพิกเซลและคำนวณพื้นที่..."):
+    with st.spinner("ระบบกำลังคำนวณพื้นที่อ้างอิงพิกเซลตำแหน่งเดิม..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -172,4 +172,4 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v9.0 (Location Locked)</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v9.5 (Original Position Physics)</b></div>', unsafe_allow_html=True)
