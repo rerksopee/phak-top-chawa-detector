@@ -157,7 +157,7 @@ st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div clas
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
-analyze = st.button("ประมวลผลภาพ")
+analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -169,14 +169,14 @@ if uploaded_file is not None and analyze:
         result_frame, texts = detect(frame, focal_length, zoom_factor)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        st.subheader("📋 ผลการคำนวณพื้นที่และพิกเซลตำแหน่ง")
+        st.subheader("📋 ผลการตรวจจับ")
         if texts:
             for t in texts: st.write(t)
         else:
             st.warning("ไม่พบกอผักตบชวาเป้าหมายในภาพถ่ายนี้")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("🖼️ ภาพผลการตรวจจับและจุดพิกเซลตำแหน่ง")
+        st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
 st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v9.6 (Original Tracking & Physics)</b></div>', unsafe_allow_html=True)
