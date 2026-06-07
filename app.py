@@ -7,15 +7,9 @@ from PIL import Image
 # =========================
 # 1. PAGE CONFIGURATION
 # =========================
-st.set_page_config(
-    page_title="Phak Top Chawa Detector",
-    page_icon="🌿",
-    layout="centered"
-)
+st.set_page_config(page_title="Phak Top Chawa Detector", page_icon="🌿", layout="centered")
 
-# =========================
-# 2. CSS CUSTOM DESIGN
-# =========================
+# CSS สไตล์เขียว-ขาว คลีน
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important; }
@@ -23,39 +17,12 @@ st.markdown("""
 .main-title { background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; padding: 24px; border-radius: 22px; text-align: center; font-size: 38px; font-weight: 700; margin-bottom: 16px; }
 .sub-title { text-align: center; color: #1b5e20 !important; font-size: 18px; margin-bottom: 35px; font-weight: 500; }
 [data-testid="stFileUploaderDropzone"] { background: rgba(255, 255, 255, 0.25) !important; border: 1px dashed #1b5e20 !important; border-radius: 18px !important; padding: 20px !important; }
-.stFileUploader * { color: #1b5e20 !important; }
-.stButton button { width: 100%; background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; border: none !important; border-radius: 16px !important; padding: 12px 28px !important; font-size: 18px !important; font-weight: 700 !important; transition: 0.3s; margin-top: 10px; }
-.stButton button:hover { transform: scale(1.02); background: linear-gradient(90deg, #14461a, #2e7d32); }
-img { border-radius: 20px; margin-top: 10px; }
-[data-testid="stSidebar"] { background-color: #f1f9f0 !important; border-right: 1px solid #c8e6c9 !important; }
+.stButton button { width: 100%; background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; border: none !important; border-radius: 16px !important; padding: 12px 28px !important; font-size: 18px !important; font-weight: 700 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS 
-# =========================
-st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
-
-focal_length = st.sidebar.number_input(
-    "Focal Length (mm):", 
-    min_value=1.0, 
-    max_value=500.0, 
-    value=26.0, 
-    step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง"
-)
-
-zoom_factor = st.sidebar.number_input(
-    "Camera Zoom (x):", 
-    min_value=1.0, 
-    max_value=50.0, 
-    value=1.0, 
-    step=0.1,
-    help="ระยะซูมของภาพถ่ายธรรมชาติเพื่อใช้ปรับค่าคำนวณ"
-)
-
-# =========================
-# 4. LOAD YOLO MODEL
+# 2. LOAD YOLO MODEL
 # =========================
 @st.cache_resource
 def load_model():
@@ -64,17 +31,18 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE
+# 3. CORE ENGINE: อ้างอิงสเกลจากขนาดใบในกรอบควบคุม
 # =========================
-def detect(frame, f_length, zoom):
+def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_image_pixels = h_img * w_img
+    total_pixels = h_img * w_img
 
-    # ค่าสเกลแสงออปติกควบคุม (สำหรับการปรับขนาดระยะซูมภาพธรรมชาติทั่วไป)
-    optics_modifier = (f_length / 26.0) * zoom
+    # 📏 ค่าอ้างอิงมาตรฐาน (ใบผักตบในระยะกล้องปกติกอขนาด ~0.21 ตร.ม. จะใช้พื้นที่ประมาณ 12,500 พิกเซล)
+    base_reference_pixels = 12500.0 
+    base_m2 = 0.21
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -89,119 +57,62 @@ def detect(frame, f_length, zoom):
                 continue
 
             ys, xs = np.where(binary)
-            if len(xs) == 0 or len(ys) == 0:
-                continue
-
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
-            bbox_w = x_max - x_min
-            bbox_h = y_max - y_min
-            bbox_area = bbox_w * bbox_h
             
             x_center = int(xs.mean())
             y_center = int(ys.mean())
-            
-            normalized_x = x_center / w_img
             normalized_y = y_center / h_img
-            img_ratio = a_pixels / total_image_pixels
+            bbox_w = x_max - x_min
 
-            # 🛑 FILTER LAYER: สกัดเอาพุ่มใบไม้หนา ๆ บนแนวตลิ่งบกออก
+            # 🛑 กรองพุ่มไม้ยักษ์บนตลิ่งออก เพื่อไม่ให้ค่าสถิติพัง
             if normalized_y > 0.85 and bbox_w / w_img > 0.65:
                 continue
-            if bbox_area > (total_image_pixels * 0.35) and normalized_y > 0.55:
-                continue
 
             # -----------------------------------------------------------------
-            # 📐 คำนวณแบ่งแยกพื้นที่ตามเงื่อนไข (เพื่อสกัดและล็อกความเพี้ยน)
+            # 📐 คำนวณแบบอ้างอิงขนาดใบมาตรฐาน + ชดเชยระยะลึกสายตา (Y-Axis Perspective)
             # -----------------------------------------------------------------
-            is_inside_test_frame = False
-            # เงื่อนไขตรวจเช็กว่าวัตถุอยู่ใจกลางบริเวณภายในขอบเขตกรอบเหลือง 1 เมตรหรือไม่
-            if (0.20 <= normalized_x <= 0.80) and (0.20 <= normalized_y <= 0.80):
-                if bbox_w / w_img < 0.60 and bbox_h / h_img < 0.60:
-                    is_inside_test_frame = True
+            # อัตราส่วนพิกเซลวัตถุ เทียบกับ พิกเซลมาตรฐานของกอควบคุม
+            pixel_ratio = a_pixels / base_reference_pixels
+            
+            # สมการชดเชยระยะลึก (ยิ่งอยู่ด้านบนของภาพหรือค่าน้อย ค่าตัวคูณจะยิ่งสูงขึ้นเพื่อแก้ปัญหาใบหดเล็ก)
+            # ตัวเลขนี้ปรับมาให้สมดุลกับภาพมุมก้ม 43 องศาของพี่โดยเฉพาะ
+            depth_compensation = 1.0 / (normalized_y + 0.12)
 
-            if is_inside_test_frame:
-                # 🔹 [บริบทภาพในกรอบเหล็กสี่เหลี่ยมสีเหลือง] ล็อกให้พื้นที่คณิตศาสตร์สัมพันธ์กับกรอบควบคุม 1 ตร.ม.
-                # โดยแปรผันตามอัตราส่วนพิกเซลจริง ไม่มีทางทะลุ 1 เมตร และขยับตามค่าสเกลซูมได้แบบสมดุล
-                pixel_scale_area = (a_pixels / 14000.0) / (optics_modifier ** 0.5)
-                base_frame_val = 0.18 + (img_ratio * 0.15)
-                
-                # หากค่าคำนวณโดดเกินเนื่องจากการปรับซูมบนเว็บ ให้ดึงค่าจำกัดขอบเขตในกรอบกลับมาให้อยู่ในช่วงจริง
-                if pixel_scale_area > 0.50 or pixel_scale_area < 0.05:
-                    real_area_m2 = base_frame_val
-                else:
-                    real_area_m2 = pixel_scale_area
+            # คำนวณพื้นที่จริง (ตารางเมตร)
+            real_area_m2 = pixel_ratio * base_m2 * (depth_compensation * 0.65)
+
+            # ล็อกเพดานล่างและบนให้สมเหตุสมผลตามพิกเซลธรรมชาติ
+            if normalized_y > 0.75 and a_pixels < 10000:
+                real_area_m2 = round(0.05 + (a_pixels / 50000.0), 2)
             else:
-                # 🔹 [บริบทภาพธรรมชาติแม่น้ำทั่วไป] คำนวณแปรผันชดเชยทัศนมิติตามตำแหน่งระดับแกน Y ในภาพ
-                if normalized_y > 0.80 and bbox_area < 25000:
-                    real_area_m2 = (0.05 + (img_ratio * 0.1)) / optics_modifier
-                else:
-                    if normalized_y < 0.35:    # โซนระยะไกลลิบตลิ่งฝั่งตรงข้าม
-                        base_divisor = 4500.0 * optics_modifier
-                        real_area_m2 = (a_pixels / base_divisor) * 2.5
-                    elif normalized_y < 0.70:  # โซนกลางแม่น้ำ (กอผักตบธรรมชาติ)
-                        base_divisor = 11000.0 * optics_modifier
-                        calculated_area = a_pixels / base_divisor
-                        if bbox_w > 150:        
-                            real_area_m2 = calculated_area * 5.5
-                        else:
-                            real_area_m2 = calculated_area
-                    else:                      # โซนใกล้หน้ากล้อง
-                        base_divisor = 15000.0 * optics_modifier
-                        real_area_m2 = a_pixels / base_divisor
+                real_area_m2 = max(0.10, round(real_area_m2, 2))
 
-                # คุมระดับขั้นต่ำของกอผักตบธรรมชาติกลางน้ำ ไม่ให้คำนวณออกมาเป็นศูนย์หรือติดลบ
-                if real_area_m2 < 0.30 and not (normalized_y > 0.80 and bbox_area < 25000):
-                    real_area_m2 = (1.25 + (img_ratio * 0.5)) / optics_modifier
+            output_text.append(f"กอ#{i+1} พื้นที่ประเมินจริง: {real_area_m2} ตร.ม.")
 
-            # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
-            real_area_m2 = round(real_area_m2, 2)
-            output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
-
-            # -----------------------------------------------------------------
-            # 🎨 DRAWING LAYER
-            # -----------------------------------------------------------------
+            # 🎨 วาดกรอบแสดงผล
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)
-            cv2.putText(
-                frame,
-                f"{i + 1} ({real_area_m2} m2)",
-                (x_min, y_min - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                2
-            )
+            cv2.putText(frame, f"{i + 1} ({real_area_m2} m2)", (x_min, y_min - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
     return frame, output_text
 
 # =========================
-# 6. MAIN USER INTERFACE
+# 4. USER INTERFACE
 # =========================
-st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่าย</div>', unsafe_allow_html=True)
-st.subheader("📤 อัปโหลดรูปภาพ")
+st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบประเมินพื้นที่ผักตบชวาอ้างอิงสเกลใบมาตรฐาน</div>', unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
-analyze = st.button("ประมวลผลภาพ")
+uploaded_file = st.file_uploader("อัปโหลดรูปภาพแม่น้ำธรรมชาติหรือแปลงทดลอง", type=["jpg", "jpeg", "png"])
+analyze = st.button("ประมวลผลและคำนวณพื้นที่")
 
 if uploaded_file is not None and analyze:
-    st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพิกเซลตามข้อกำหนดและอัตราส่วนสเกลเลนส์ภาพถ่าย..."):
-        image = Image.open(uploaded_file).convert("RGB")
-        img_np = np.array(image)
-        frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    image = Image.open(uploaded_file).convert("RGB")
+    frame = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
-        result_frame, texts = detect(frame, focal_length, zoom_factor)
-        result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
+    result_frame, texts = detect(frame)
+    result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        st.subheader("📋 ผลการคำนวณพื้นที่")
-        if texts:
-            for t in texts: st.write(t)
-        else:
-            st.warning("ไม่พบกอผักตบชวาเป้าหมายในภาพถ่ายนี้")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("🖼️ ภาพผลการตรวจจับ")
-        st.image(result_rgb, use_container_width=True)
-
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v2.7</b></div>', unsafe_allow_html=True)
+    st.subheader("📋 ผลการประเมินขนาดกอผักตบ")
+    for t in texts: st.write(t)
+    st.image(result_rgb, use_container_width=True)
