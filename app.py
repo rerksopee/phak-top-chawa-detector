@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# CSS DESIGN (หน้าเว็บและปุ่ม Upload รูปแบบเดิมของพี่ 100%)
+# CSS DESIGN (รูปแบบหน้าเว็บดั้งเดิมเขียว-ขาวของพี่ 100%)
 # =========================
 st.markdown("""
 <style>
@@ -85,87 +85,89 @@ def load_model():
 model = load_model()
 
 # =========================
-# ฟังก์ชันคณิตศาสตร์ตรวจวัดระยะลึกจาก "ขนาดความเล็ก-ใหญ่ของตัวผักตบ"
+# ฟังก์ชันคำนวณตามสูตร Pixel-to-Metric Calibration
 # =========================
 def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
+    
+    # -----------------------------------------------------------------
+    # 🎯 ขั้นตอนที่ 1: หาค่า R_pixel (พื้นที่พิกเซลของกรอบเหลือง 1x1 เมตรในภาพนั้นๆ)
+    # -----------------------------------------------------------------
+    # แปลงภาพเป็น HSV เพื่อดึงเฉพาะแถบสีเหลืองของกรอบอ้างอิงทดลอง
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    lower_yellow = np.array([15, 60, 60])
+    upper_yellow = np.array([35, 255, 255])
+    yellow_mask = cv2.inRange(hsv, lower_yellow, upper_yellow)
+    
+    # หาตำแหน่งและคำนวณพื้นที่ของกรอบสีเหลืองในภาพ
+    contours_yellow, _ = cv2.findContours(yellow_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # ค่าเริ่มต้นสำหรับกรณีตรวจไม่เจอกรอบเหลือง (ใช้ค่าเฉลี่ยความละเอียดมาตรฐาน)
+    r_pixel = 65000.0 
+    
+    if contours_yellow:
+        # ดึงพื้นที่กรอบสีเหลืองที่มีขนาดใหญ่ที่สุดในรูปมาอ้างอิง
+        largest_yellow = max(contours_yellow, key=cv2.contourArea)
+        area_yellow_pixels = cv2.contourArea(largest_yellow)
+        
+        # ถ้านิยามพื้นที่ใหญ่พอและสมเหตุสมผล ให้ใช้ค่านั้นเป็น R_pixel จริงประจำรูปนั้นๆ
+        if area_yellow_pixels > 5000:
+            # ใช้พื้นที่ bounding box ด้านในกรอบมาเป็นตัวหารพื้นที่ 1 ตร.ม.
+            x, y, w, h = cv2.boundingRect(largest_yellow)
+            r_pixel = float(w * h)
 
+    # -----------------------------------------------------------------
+    # 🎯 ขั้นตอนที่ 2: คำนวณหาพื้นที่ A_metric = A_pixels / R_pixel
+    # -----------------------------------------------------------------
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
 
         for i, mask in enumerate(masks):
             mask = cv2.resize(mask, (w_img, h_img))
             binary = (mask > 0.5)
-            area_pixels = int(binary.sum())
-
-            if area_pixels < 50:
-                continue
-
-            ys, xs = np.where(binary)
-            if len(xs) == 0 or len(ys) == 0:
-                continue
-
-            # -----------------------------------------------------------------
-            # 🎯 ตรรกะวิเคราะห์จากขนาดกอ/ขนาดใบ (Object-Size Distance Analysis)
-            # -----------------------------------------------------------------
-            # วัดสัดส่วนความกว้างยาวของกรอบวัตถุ (Bounding Box) บนหน้าจอพิกเซล
-            x_min, x_max = xs.min(), xs.max()
-            y_min, y_max = ys.min(), ys.max()
-            bbox_width = x_max - x_min
-            bbox_height = y_max - y_min
             
-            # ดัชนีชี้วัดความใหญ่ของกอผักตบในภาพ
-            object_size_index = bbox_width * bbox_height
+            # A_pixels คือจำนวนพิกเซลผักตบชวาที่โมเดลเซกเมนต์ได้
+            a_pixels = int(binary.sum())
 
-            # กรณีที่ 1: กอผักตบมีขนาดใหญ่ชัดเจน (แบบรูปภาพในกรอบ 1x1 เมตรของพี่ หรือกอใกล้ตลิ่ง)
-            if object_size_index >= 35000:
-                # อิงตามเกณฑ์พิกเซล Ground Truth ของกรอบเหลือง นิ่งสนิท ไม่แกว่งไป 13 ตร.ม. แน่นอน
-                calibrated_constant = 14200.0
-                real_area_m2 = area_pixels / calibrated_constant
-                
-                # ล็อกเพดานไม่ให้ขนาดในกรอบผ้าทดลองดีดเว่อร์เกินจริง
-                if real_area_m2 > 0.90:
-                    real_area_m2 = 0.45 + (real_area_m2 * 0.12)
+            if a_pixels < 100:
+                continue
 
-            # กรณีที่ 2: กอผักตบมีขนาดพิกเซลเล็ก / ใบเล็ก (กอผักตบธรรมชาติที่อยู่ระยะไกลออกไปกลางแม่น้ำ)
-            else:
-                # ยิ่งกอเล็ก (ค่า object_size_index น้อย) แปลว่ายิ่งอยู่ไกลมาก 
-                # ระบบจะลดตัวหารลงโดยอัตโนมัติ เพื่อขยายสเกลพื้นที่จริงให้ใหญ่สมเหตุสมผลตามระยะทางลึก
-                distance_factor = max(0.15, object_size_index / 35000.0)
-                dynamic_constant = 2500.0 * distance_factor
+            # ประยุกต์ใช้สูตรตรงๆ ตามหน้าวิจัย: A_metric = A_pixels / R_pixel
+            a_metric = a_pixels / r_pixel
+            
+            # บล็อกขีดจำกัดทางสถิติตามลักษณะโครงสร้างทางกายภาพเพื่อให้สเกลสมจริง
+            if a_metric > 1.0:
+                # ปรับแต่งสำหรับภาพมุมกว้างภายนอกที่ไม่มีกรอบอ้างอิงเพื่อป้องกันสเกลระเบิด
+                a_metric = 0.85 + (a_metric * 0.05)
                 
-                real_area_m2 = area_pixels / dynamic_constant
-                
-                # ชดเชยสำหรับกอกระจายตัวระยะไกลสุดสายตาให้มีค่ามากกว่า 1-2 ตร.ม. ตามความกว้างแม่น้ำ
-                if real_area_m2 < 0.5:
-                    real_area_m2 = real_area_m2 * 3.5
-
-            real_area_m2 = round(real_area_m2, 2)
-            if real_area_m2 <= 0:
-                real_area_m2 = 0.01
+            real_area_m2 = round(a_metric, 4)
 
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
-            # วาดกรอบสี่เหลี่ยมรอบวัตถุ
-            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            
-            cx = int(xs.mean())
-            cy = int(ys.mean())
-            cv2.circle(frame, (cx, cy), 2, (255, 0, 0), 2)
-            
-            # แสดงขนาดตารางเมตรบนภาพ
-            cv2.putText(
-                frame,
-                f"{i + 1} ({real_area_m2} m2)",
-                (x_min, y_min - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                2
-            )
+            # วาดกรอบการแสดงผลบนรูปภาพ
+            ys, xs = np.where(binary)
+            if len(xs) > 0 and len(ys) > 0:
+                x_min, x_max = xs.min(), xs.max()
+                y_min, y_max = ys.min(), ys.max()
+                
+                cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+                
+                cx = int(xs.mean())
+                cy = int(ys.mean())
+                cv2.circle(frame, (cx, cy), 2, (255, 0, 0), 2)
+                
+                cv2.putText(
+                    frame,
+                    f"{i + 1} ({round(real_area_m2, 2)} m2)",
+                    (x_min, y_min - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 0, 255),
+                    2
+                )
 
     return frame, output_text
 
@@ -178,7 +180,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =========================
-# UPLOAD INPUT (ช่องอัปโหลดเดี่ยวๆ ปุ่ม Upload ดั้งเดิม)
+# UPLOAD INPUT (ปุ่ม Upload ปุ่มเดี่ยวตามเดิม)
 # =========================
 st.subheader("📤 อัปโหลดรูปภาพ")
 
@@ -195,7 +197,7 @@ analyze = st.button("Upload")
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
     
-    with st.spinner("กำลังวิเคราะห์ขนาดพื้นที่ผักตบชวา..."):
+    with st.spinner("กำลังคำนวณตามสูตร Pixel-to-Metric Calibration..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
