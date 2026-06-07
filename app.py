@@ -48,7 +48,7 @@ focal_length = st.sidebar.number_input(
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=1.0, 
+    min_value=0.5, 
     max_value=50.0, 
     value=1.0, 
     step=0.1,
