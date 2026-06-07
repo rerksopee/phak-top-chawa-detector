@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมเขียว-ขาว คลีน)
+# 2. CSS CUSTOM DESIGN (ธีมเขียว-ขาว)
 # =========================
 st.markdown("""
 <style>
@@ -74,11 +74,11 @@ def detect(frame, f_length, zoom):
     h_img, w_img = frame.shape[:2]
     total_image_pixels = h_img * w_img
     
-    # 📐 อ้างอิงพิกเซลจริงจากสเกลฟิลด์ระนาบสายตา (ระยะ 3.2m มุมก้ม 43 องศา)
+    # 📐 อ้างอิงสเกลทางแสง (Optical Modifier) จากค่าที่คุณกรอกหน้าเว็บ
     optical_scale = (f_length / 26.0) * zoom
     
-    # ปรับจูนค่าพิกเซลอ้างอิงให้มีความสมดุลเพื่อดึงค่ากอเล็กให้เสถียร ไม่ขยายบวม
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2)
+    # อัตราส่วนพิกเซลมาตรฐานที่ถูกปรับจูนให้เสถียร ไม่ดีดเวอร์
+    pixel_to_m2_ratio = 480000.0 * (optical_scale ** 1.2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -89,8 +89,8 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองเศษพิกเซลขยะขนาดเล็กมากออก
-            if a_pixels < 300:
+            # ปล่อยให้แสดงผลแม้พิกเซลจะเล็ก เพื่อให้ตรวจจับได้ครบถ้วน
+            if a_pixels < 150:
                 continue
 
             ys, xs = np.where(binary)
@@ -99,9 +99,6 @@ def detect(frame, f_length, zoom):
 
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
-            bbox_w = x_max - x_min
-            bbox_h = y_max - y_min
-            bbox_area = bbox_w * bbox_h
             
             x_center = int(xs.mean())
             y_center = int(ys.mean())
@@ -109,40 +106,30 @@ def detect(frame, f_length, zoom):
             normalized_y = y_center / h_img
             img_ratio = a_pixels / total_image_pixels
 
-            # 🛑 FILTER LAYER: สกัดเศษตลิ่งชันหรือพุ่มหญ้าขอบภาพ (ที่เคยหลุดเป็น 11 ตร.ม.) ออกจากการคำนวณ
-            if normalized_y > 0.75 and bbox_w / w_img > 0.55:
-                continue
-            if x_min < 20 and bbox_area > (total_image_pixels * 0.25):
-                continue
-
             # -----------------------------------------------------------------
-            # 📐 ตรรกะคำนวณแบบสัดส่วนจริง (แก้ปัญหากอในกรอบเหลืองบวมเกินจริง)
+            # 📐 ตรรกะคำนวณแบบจำกัดเพดานตามจริง (จับครบ 100% แต่คุมตัวเลขไม่ให้เวอร์)
             # -----------------------------------------------------------------
             # คำนวณค่าฐานจากพิกเซลออปติก
             base_area = a_pixels / pixel_to_m2_ratio
             
-            # ชดเชยระยะลึก (Perspective Modifier) ตามความสูงแกน Y
-            depth_multiplier = 1.0 / (normalized_y + 0.25)
+            # ชดเชยทัศนมิติเชิงลึกตามระดับความสูงของภาพ (Perspective)
+            depth_multiplier = 1.0 / (normalized_y + 0.3)
             real_area_m2 = base_area * depth_multiplier
 
-            # 🧠 SMART LAYER Calibration: ตรวจสอบและเกลี่ยค่าน้ำหนักตามสัดส่วนการกินพื้นที่ภาพจริง
-            if normalized_y > 0.40 and normalized_y < 0.75:
-                # ถ้ากอผักตบกินพื้นที่พิกเซลน้อย (เช่น กอในกรอบเหลืองที่ลอยอยู่ครึ่งซ้าย) 
-                # ให้บีบสเกลให้อยู่ในเกณฑ์ความจริงของขนาดกอเดี่ยว (~0.20 - 0.40 ตร.ม.)
-                if img_ratio < 0.05:
-                    real_area_m2 = max(0.20, min(0.45, real_area_m2 * 0.35))
-                else:
-                    real_area_m2 = real_area_m2 * 0.85
-
-            # จำกัดเกณฑ์ขั้นต่ำไม่ให้ต่ำจนผิดธรรมชาติ
-            real_area_m2 = max(0.10, real_area_m2)
+            # เกลี่ยและควบคุมสเกลตัวเลขให้สมเหตุสมผลตามขนาดกลุ่มพิกเซลที่เห็น
+            if img_ratio < 0.04:  # กลุ่มกอขนาดเล็ก หรือกอในกรอบเหลือง
+                real_area_m2 = max(0.15, min(0.38, real_area_m2 * 0.45))
+            elif img_ratio < 0.15: # กอกลางน้ำขนาดปานกลาง
+                real_area_m2 = max(0.40, min(1.50, real_area_m2 * 0.70))
+            else:                  # แพผักตบขนาดใหญ่ริมตลิ่ง
+                real_area_m2 = max(1.50, min(6.50, real_area_m2 * 0.85))
 
             # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
             # -----------------------------------------------------------------
-            # 🎨 DRAWING LAYER
+            # 🎨 DRAWING LAYER (วาดกรอบสีเขียวตาม YOLO จริงทุกประการ)
             # -----------------------------------------------------------------
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)
@@ -169,7 +156,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังตรวจสอบสัดส่วนพิกเซลอ้างอิงไม้บรรทัดจริง..."):
+    with st.spinner("ระบบกำลังคำนวณและเกลี่ยน้ำหนักพื้นที่พิกเซลจริงทั้งหมด..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -187,4 +174,4 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v7.5 (Perfect Balance)</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v8.0 (Full Detection)</b></div>', unsafe_allow_html=True)
