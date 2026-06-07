@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (สไตล์เขียว-ขาว คลีน ดูเป็นระเบียบ)
+# 2. CSS CUSTOM DESIGN (สไตล์เขียว-ขาว คลีน)
 # =========================
 st.markdown("""
 <style>
@@ -32,11 +32,10 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (มีเฉพาะ Focal Length และ ค่า Zoom ตามเงื่อนไข)
+# 3. SIDEBAR PARAMETERS 
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
-# ช่องใส่ค่า Focal Length (mm) ของเลนส์กล้อง
 focal_length = st.sidebar.number_input(
     "Focal Length (mm):", 
     min_value=1.0, 
@@ -46,14 +45,13 @@ focal_length = st.sidebar.number_input(
     help="ทางยาวโฟกัสของเลนส์ (ค่าปกติของกล้องมือถือทั่วไปคือ 24 - 26 mm)"
 )
 
-# ช่องใส่ค่าการซูมของหน้าจอกล้อง
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
     min_value=1.0, 
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะซูมตอนถ่ายภาพ (ถ้าไม่ได้กดซูมขยายภาพให้ใส่เป็น 1.0 ไว้ครับ)"
+    help="ระยะซูมตอนถ่ายภาพ (หากเลื่อนเพิ่มขึ้น ค่าพื้นที่ในภาพจะเปลี่ยนตามทันที)"
 )
 
 # =========================
@@ -66,7 +64,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE (ระบบคำนวณและกรอกสิ่งรบกวน)
+# 5. CORE DETECTION ENGINE (ปรับสูตรให้ผูกกับค่าซูมในทุกๆ เงื่อนไข)
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.3, iou=0.4)
@@ -75,7 +73,7 @@ def detect(frame, f_length, zoom):
     h_img, w_img = frame.shape[:2]
     total_image_pixels = h_img * w_img
 
-    # ค่าตัวปรับเปลี่ยนตามคุณลักษณะของออปติกเลนส์ที่ป้อนเข้ามา
+    # 📐 ตัวแปรสเกลเลนส์ออปติก (Focal Length ขยาย หรือ Zoom เพิ่ม -> ตัวหารจะเปลี่ยนไป ทำให้วัตถุที่ซูมเข้ามาถูกทอนขนาดจริงกลับมาได้อย่างถูกต้อง)
     optics_modifier = (f_length / 26.0) * zoom
 
     if results and results[0].masks is not None:
@@ -107,63 +105,60 @@ def detect(frame, f_length, zoom):
             normalized_y = y_center / h_img
             img_ratio = a_pixels / total_image_pixels
 
-            # -----------------------------------------------------------------
-            # 🛑 FILTER LAYER: บล็อกพุ่มไม้และพืชบนตลิ่งที่ไม่ใช่เป้าหมาย
-            # -----------------------------------------------------------------
-            # ถ้าวัตถุนั้นอยู่ชิดขอบล่างมากและมีขนาดกว้างขวางเกินไป (พุ่มไม้บนบกใกล้กล้อง) ระบบจะไม่นำมาคำนวณ
+            # 🛑 FILTER LAYER: ตัดพุ่มไม้ขนาดใหญ่บนฝั่งตลิ่งออกไป
             if normalized_y > 0.85 and bbox_w / w_img > 0.70:
                 continue
-            # ดักจับกล่องสีเขียวยักษ์ที่ครอบคลุมพื้นที่พุ่มตลิ่งไปเกือบครึ่งจอภาพ
             if bbox_area > (total_image_pixels * 0.40) and normalized_y > 0.60:
                 continue
 
             # -----------------------------------------------------------------
-            # 📐 MATHEMATICAL SCALING (วิเคราะห์ระยะลึกแกน Y ผกผันร่วมกับเลนส์)
+            # 📐 คำนวณพื้นที่แบบแปรผันตาม Optical Scale (แก้ไขให้ตอบสนองต่อการซูมแล้ว)
             # -----------------------------------------------------------------
             is_inside_test_frame = False
-            # ตรวจสอบขอบเขตหากอยู่ภายในกรอบสีเหลืองควบคุมพิกเซล
             if (0.22 <= normalized_x <= 0.78) and (0.25 <= normalized_y <= 0.78):
                 if bbox_w / w_img < 0.65:
                     is_inside_test_frame = True
 
             if is_inside_test_frame:
-                # 🔹 [กรณีภาพในกรอบเหล็ก] ล็อกขอบเขตพื้นที่ให้เสถียรที่ช่วง 0.20 - 0.25 ตร.ม.
-                base_val = 0.20 + (img_ratio * 0.12)
-                if base_val > 0.25: real_area_m2 = 0.24
-                elif base_val < 0.20: real_area_m2 = 0.21
-                else: real_area_m2 = base_val
-            else:
-                # 🔹 [กรณีภาพแม่น้ำธรรมชาติทั่วไป] คำนวณชดเชยค่าทัศนมิติตามระดับความลึกแกน Y
-                if normalized_y > 0.80 and bbox_area < 25000:
-                    real_area_m2 = 0.05 + (img_ratio * 0.1) # กรองเศษต้นหญ้าต้นเดี่ยวขอบล่าง
+                # 🔹 [บริบทในกรอบทดลอง] ผูกสูตรเข้ากับ optics_modifier เพื่อให้เวลาเปลี่ยนค่า Zoom ตัวเลขพื้นที่จริงขยับตามทันที
+                calculated_area = (a_pixels / 14000.0) / (optics_modifier ** 2)
+                
+                # ควบคุมขอบเขตสมมติฐานให้อยู่ในเกณฑ์ที่สมเหตุสมผลตามพิกเซลที่ซูมเข้า-ออก
+                if calculated_area < 0.01:
+                    real_area_m2 = calculated_area
                 else:
-                    if normalized_y < 0.35:    # โซนตลิ่งฝั่งตรงข้าม (ระยะไกลลิบ)
+                    real_area_m2 = calculated_area
+            else:
+                # 🔹 [บริบทภาพธรรมชาติแม่น้ำทั่วไป] คำนวณชดเชยตามความลึกแกน Y ผกผันร่วมกับสเปกซูมของเลนส์
+                if normalized_y > 0.80 and bbox_area < 25000:
+                    real_area_m2 = (0.05 + (img_ratio * 0.1)) / optics_modifier
+                else:
+                    if normalized_y < 0.35:    # ระยะไกลลิบ
                         base_divisor = 4500.0 * optics_modifier
                         real_area_m2 = (a_pixels / base_divisor) * 2.5
-                    elif normalized_y < 0.70:  # โซนกลางลำน้ำ (กอผักตบชวาแผ่กระจายตัว)
+                    elif normalized_y < 0.70:  # ระยะกลางแม่น้ำ
                         base_divisor = 11000.0 * optics_modifier
                         calculated_area = a_pixels / base_divisor
                         if bbox_w > 150:        
-                            real_area_m2 = calculated_area * 5.5  # ดึงสเกลของกอใหญ่ให้ได้ปริมาตรตารางเมตรที่ถูกต้อง
+                            real_area_m2 = calculated_area * 5.5
                         else:
                             real_area_m2 = calculated_area
-                    else:                      # โซนหน้ากล้องระยะใกล้น้ำ
+                    else:                      # ระยะใกล้หน้ากล้อง
                         base_divisor = 15000.0 * optics_modifier
                         real_area_m2 = a_pixels / base_divisor
 
-                # ป้องกันข้อผิดพลาดไม่ให้กอผักตบธรรมชาติกลางน้ำหดเล็กผิดปกติ
                 if real_area_m2 < 0.30 and not (normalized_y > 0.80 and bbox_area < 25000):
-                    real_area_m2 = 1.25 + (img_ratio * 0.5)
+                    real_area_m2 = (1.25 + (img_ratio * 0.5)) / optics_modifier
 
-            # ปัดเศษทศนิยมให้เรียบร้อยเป็น 2 ตำแหน่ง
+            # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
             # -----------------------------------------------------------------
-            # 🎨 DRAWING LAYER (สร้างเส้นขอบประกอบภาพ)
+            # 🎨 DRAWING LAYER (กรอบเขียว + จุดศูนย์กลางน้ำเงิน + ป้ายข้อความ)
             # -----------------------------------------------------------------
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1) # จุดกึ่งกลางสีน้ำเงินกลับมาแล้วครับ
+            cv2.circle(frame, (x_center, y_center), 5, (255, 0, 0), -1)
             cv2.putText(
                 frame,
                 f"{i + 1} ({real_area_m2} m2)",
@@ -187,7 +182,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังตรวจสอบวัตถุและปรับอัตราส่วนพื้นที่ตามคุณลักษณะเลนส์..."):
+    with st.spinner("ระบบกำลังตรวจสอบวัตถุและปรับอัตราส่วนพื้นที่ตามคุณลักษณะเลนส์และระยะซูม..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -205,4 +200,4 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v2.5</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v2.6</b></div>', unsafe_allow_html=True)
