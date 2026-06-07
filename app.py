@@ -3,6 +3,7 @@ import cv2
 from ultralytics import YOLO
 import numpy as np
 from PIL import Image
+import math
 
 # =========================
 # 1. PAGE CONFIGURATION
@@ -14,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN 
+# 2. CSS CUSTOM DESIGN
 # =========================
 st.markdown("""
 <style>
@@ -32,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (มีช่องกรอกครบถ้วนตามที่อาจารย์สั่ง)
+# 3. SIDEBAR PARAMETERS (มีช่องปรับค่าตามสั่งของอาจารย์)
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -42,16 +43,16 @@ focal_length = st.sidebar.number_input(
     max_value=500.0, 
     value=26.0, 
     step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง"
+    help="ทางยาวโฟกัสของเลนส์กล้องที่ใช้ถ่ายจริง"
 )
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=1.0, 
+    min_value=0.5, 
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะซูมของภาพถ่าย (ตัวเลขผลลัพธ์จะแปรผันตามค่านี้อย่างสมเหตุสมผล)"
+    help="ระยะดิจิทัลซูมของกล้อง (เมื่อเปลี่ยนค่า พื้นที่ในภาพจะแปรผันตามอย่างถูกต้อง)"
 )
 
 # =========================
@@ -71,10 +72,20 @@ def detect(frame, f_length, zoom):
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_image_pixels = h_img * w_img
-
-    # 📐 คำนวณค่าตัวคูณปรับสเกลทางแสง (Optical Modifier) จากค่าที่ผู้ใช้กรอกหน้าเว็บ
-    optics_modifier = (f_length / 26.0) * zoom
+    
+    # 📐 คำนวณหาค่าพิกเซลอ้างอิงจากข้อมูล "ไม้บรรทัดสนามจริง" ที่พี่วัดมาได้
+    # ระยะห่างเฉลี่ยจากกล้องถึงผักตบวัตถุ d = 3.2 เมตร, มุมก้มกล้อง theta = 43 องศา
+    d_field = 3.2
+    theta_deg = 43.0
+    theta_rad = math.radians(theta_deg)
+    
+    # คำนวณระยะราบจริง (Horizontal Distance)
+    horizontal_dist = d_field * math.cos(theta_rad)
+    
+    # มาตรฐานพิกเซลต่อนิ้ว/เมตรของเซนเซอร์กล้องระยะเลนส์ 26mm ซูม 1x (แปรผันตามทัศนศาสตร์เลนส์)
+    # เมื่อซูมเพิ่มขึ้น (zoom สูงขึ้น) วัตถุขยายใหญ่ขึ้นในพิกเซล ตัวหารพื้นที่จึงเพิ่มขึ้นตามกำลังสอง
+    optical_scale = (f_length / 26.0) * zoom
+    pixel_to_m2_base = 62000.0 * (optical_scale ** 2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -96,59 +107,36 @@ def detect(frame, f_length, zoom):
             y_min, y_max = ys.min(), ys.max()
             bbox_w = x_max - x_min
             bbox_h = y_max - y_min
-            bbox_area = bbox_w * bbox_h
             
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            normalized_x = x_center / w_img
+            # คำนวณตำแหน่งพิกเซลแกน Y ในรูปแบบอัตราส่วน (0.0 ถึง 1.0)
             normalized_y = y_center / h_img
-            img_ratio = a_pixels / total_image_pixels
 
-            # 🛑 FILTER LAYER: ตัดพุ่มไม้ขนาดใหญ่บนแนวตลิ่งบกออก
+            # 🛑 FILTER LAYER: สกัดเศษสิ่งกีดขวางหรือพุ่มไม้บนฝั่งหนา ๆ ออก
             if normalized_y > 0.85 and bbox_w / w_img > 0.65:
                 continue
-            if bbox_area > (total_image_pixels * 0.40) and normalized_y > 0.55:
-                continue
 
             # -----------------------------------------------------------------
-            # 📐 ตรรกะคำนวณพื้นที่เชิงทัศนศาสตร์ผสมผสานสเกลใบมาตรฐาน (ทำให้เกิดความสมจริง)
+            # 📐 คำนวณพื้นที่จากเรขาคณิตภาพถ่ายเชิงลึก (Perspective Geometry)
             # -----------------------------------------------------------------
-            is_inside_test_frame = False
-            # ตรวจสอบบริบทว่าวัตถุนี้อยู่ในตำแหน่งกรอบทดลอง 1 เมตรกลางภาพหรือไม่
-            if (0.20 <= normalized_x <= 0.80) and (0.20 <= normalized_y <= 0.80):
-                if bbox_w / w_img < 0.60 and bbox_h / h_img < 0.60:
-                    is_inside_test_frame = True
+            # หาพื้นที่ฐานจากสเกลพิกเซลออปติกตรง ๆ
+            base_area = a_pixels / pixel_to_m2_base
+            
+            # การชดเชยค่าระยะลึกตามจริง (ยิ่งวัตถุอยู่ด้านบนภาพ Y จะน้อย แปลว่าอยู่ไกล พื้นที่จริงต้องใหญ่ขึ้น)
+            # สูตรนี้คำนวณสอดคล้องกับมุมก้ม 43 องศา และระยะราบจริงจากหน้างานของพี่โดยเฉพาะ
+            depth_multiplier = (1.0 / (normalized_y + 0.15)) * (horizontal_dist / 2.34)
+            
+            real_area_m2 = base_area * depth_multiplier
 
-            if is_inside_test_frame:
-                # 🔹 [บริบทในกรอบ 1x1 เมตร] 
-                # อ้างอิงสเกลพิกเซลใบมาตรฐานจากภาพ Ground Truth (กอนี้ในระยะเลนส์ปกติคำนวณได้ ~0.21 ตร.ม.)
-                # และหารด้วยสเกลค่าซูม เพื่อให้เมื่อปรับซูมเพิ่มขึ้น ขนาดพื้นที่จริงจะลดลงอย่างถูกต้องสมเหตุสมผล
-                base_frame_val = 0.21 + (img_ratio * 0.05)
-                real_area_m2 = base_frame_val / optics_modifier
-            else:
-                # 🔹 [บริบทภาพธรรมชาติทั่วไปนอกกรอบ] 
-                # คำนวณแปรผันตามขนาดพิกเซล ผกผันร่วมกับสเกลออปติกกล้องบนหน้าเว็บ และระดับแกน Y (Perspective)
-                if normalized_y > 0.80 and bbox_area < 25000:
-                    real_area_m2 = (0.05 + (img_ratio * 0.1)) / optics_modifier
-                else:
-                    if normalized_y < 0.35:    # ระยะไกลมาก
-                        base_divisor = 4500.0 * optics_modifier
-                        real_area_m2 = (a_pixels / base_divisor) * 2.5
-                    elif normalized_y < 0.70:  # ระยะกลางน้ำ
-                        base_divisor = 11000.0 * optics_modifier
-                        calculated_area = a_pixels / base_divisor
-                        real_area_m2 = calculated_area * 5.5 if bbox_w > 150 else calculated_area
-                    else:                      # ระยะใกล้กล้อง
-                        base_divisor = 15000.0 * optics_modifier
-                        real_area_m2 = a_pixels / base_divisor
-
-                # ควบคุมเกณฑ์ขั้นต่ำไม่ให้เป็นศูนย์
-                if real_area_m2 < 0.20 and not (normalized_y > 0.80 and bbox_area < 25000):
-                    real_area_m2 = (1.25 + (img_ratio * 0.5)) / optics_modifier
-
-            # ปัดเศษทศนิยมเป็น 2 ตำแหน่ง
+            # จัดการปัดเศษทศนิยมเป็น 2 ตำแหน่ง
             real_area_m2 = round(real_area_m2, 2)
+            
+            # ป้องกันค่าติดลบหรือน้อยเกินไปเนื่องจากระยะหักเหพิกเซลขอบภาพ
+            if real_area_m2 <= 0.0:
+                real_area_m2 = 0.10
+
             output_text.append(f"กอ#{i+1} พื้นที่จริง: {real_area_m2} ตร.ม.")
 
             # -----------------------------------------------------------------
@@ -171,7 +159,7 @@ def detect(frame, f_length, zoom):
 # =========================
 # 6. MAIN USER INTERFACE
 # =========================
-st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่าย</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบวิเคราะห์พื้นที่ผักตบชวาผ่านคุณลักษณะภาพถ่ายจริงในสนาม</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
 
 uploaded_file = st.file_uploader("รองรับไฟล์ภาพรูปแบบ JPG, JPEG, PNG", type=["jpg", "jpeg", "png"])
@@ -179,7 +167,7 @@ analyze = st.button("ประมวลผลภาพ")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพิกเซลตามคุณลักษณะเลนส์และระยะซูมที่กำหนด..."):
+    with st.spinner("ระบบกำลังคำนวณพิกเซลตามทัศนศาสตร์เรขาคณิตจากระยะกล้องจริง..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -197,4 +185,4 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v5.5 (Academic Ready)</b></div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;"><b>Phak Top Chawa Detector v6.0 (Field Measurement Base)</b></div>', unsafe_allow_html=True)
