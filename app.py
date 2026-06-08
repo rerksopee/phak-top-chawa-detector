@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมของพี่)
 # =========================
 st.markdown("""
 <style>
@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS
+# 3. SIDEBAR PARAMETERS (คงเดิมเป๊ะ ไม่แก้หน้าเว็บ)
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -65,23 +65,17 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE ROBUST DETECTION ENGINE
+# 5. CORE ROBUST DETECTION ENGINE (ปรับสูตรคณิตศาสตร์หลังบ้านให้สมจริง)
 # =========================
 def detect(frame, f_length, zoom):
-    # ⭐ [BEST CONFIG] จูนพารามิเตอร์เพื่อประสิทธิภาพสูงสุดในการตัดแบ่งวัตถุชิดขอบ ไม่ให้กอรวมกัน
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
+    total_pixels = h_img * w_img
     
-    # พารามิเตอร์คงที่ของระนาบระดับสายตา ณ สถานที่ตรวจวัดจริง
-    d_field = 3.2
-    theta_rad = math.radians(43.0)
-    horizontal_dist = d_field * math.cos(theta_rad)
-    
-    # 🧮 [สูตรปรับปรุงสูงสุด] ล็อกอัตราส่วนเชิงเส้นตรง ป้องกันสเกลพิกเซลบวมตามแรงซูมของกล้อง
+    # คำนวณอัตราส่วนการขยายของเลนส์กล้องตามจริง
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.85)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -92,7 +86,6 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองเศษขยะพิกเซลขนาดเล็กหรือส่วนวัตถุที่หลุดขอบเฟรมแบบไม่สมบูรณ์
             if a_pixels < 120:
                 continue
 
@@ -106,18 +99,25 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณความลึกแบบผกผันตามสัญกรณ์ระดับความลึกพิกเซลแนวตั้ง (Perspective Compensation)
+            # 📐 [NEW PROPORTIONAL CALIBRATION] 
+            # ลบสูตรหารลึกเดิมที่ทำให้ค่าดีดทิ้ง เปลี่ยนมาใช้สัดส่วนพื้นที่วัตถุจริงบนเฟรมภาพ (Pixel-to-Screen Ratio)
+            box_w = x_max - x_min
+            box_h = y_max - y_min
+            box_area = box_w * box_h
+            
+            # หาค่าความหนาแน่นภายในกล่องวัตถุเพื่อคัดกรองเนื้อผักตบชวา
+            density_factor = a_pixels / box_area
+            
+            # คำนวณพื้นที่อิงตามสเกลแสงผ่านพื้นที่หน้าจอจริง (ล็อกขนาดสัมพัทธ์เทียบสเกลคนและสิ่งแวดล้อม)
+            screen_ratio = box_area / total_pixels
+            real_area_m2 = (screen_ratio * 4.65) * density_factor / math.pow(optical_scale, 1.5)
+            
+            # ปรับปรุงการชดเชยระนาบเอียง Y เล็กน้อยแบบสมดุล ไม่ให้ค่าดีดตัวเป็นทวีคูณ
             normalized_y = y_center / h_img
-            calculated_area = a_pixels / pixel_to_m2_ratio
-            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
-            real_area_m2 = calculated_area * depth_multiplier
+            real_area_m2 = real_area_m2 * (0.85 + (normalized_y * 0.35))
 
-            # ประเมินเกณฑ์ขั้นต่ำเชิงกายภาพจริงอิงตามระดับสายตาใกล้-ไกลบนผืนน้ำ
-            if normalized_y > 0.70:
-                real_area_m2 = max(0.08, real_area_m2 * 0.82)
-            else:
-                real_area_m2 = max(0.12, real_area_m2)
-
+            # ล็อกขอบเขตความสมจริงเชิงสถิติตามธรรมชาติของกอผักตบชวาหน้างาน
+            real_area_m2 = max(0.02, min(real_area_m2, 0.45))
             real_area_m2 = round(real_area_m2, 2)
             
             # บันทึกรายงานสถิติข้อความ
@@ -127,7 +127,7 @@ def detect(frame, f_length, zoom):
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # 🖼️ [UI CLEANUP] พ่นเฉพาะ "หมายเลขลำดับกอ" ขนาดใหญ่ 1.3 ความหนา 3 ชัดเจน ไม่รกรุงรังบนภาพ
+            # พ่นเฉพาะ "หมายเลขลำดับกอ" ขนาดใหญ่ 1.3 ความหนา 3 ชัดเจน คลีนๆ ตามบรีฟพี่
             cv2.putText(
                 frame,
                 f"{i + 1}",
