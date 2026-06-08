@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมที่พี่ชอบ)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # ==========================================
 st.markdown("""
 <style>
@@ -65,24 +65,22 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# 5. CORE CALIBRATED DETECTION ENGINE
+# 5. CORE HYBRID DETECTION ENGINE
 # ==========================================
 def detect(frame, f_length, zoom):
-    # [CONFIG] ตั้งค่าความเชื่อมั่นและเกณฑ์การตัดแบ่งขอบเขต
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
     
-    # 📐 [EMPIRICAL CALIBRATION] ปรับจูนค่าระนาบฐานอ้างอิงของแม่น้ำและตลิ่งธรรมชาติใหม่
-    d_field = 4.2                  # จำลองระยะเฉลี่ยเชิงลึกริมตลิ่งให้ครอบคลุมและกว้างขึ้น
-    theta_rad = math.radians(35.0)      # ปรับมุมลาดเอียงจำลองลาดลงเล็กน้อยตามมิติภาพมุมกว้างจริง
+    # 📐 ค่าระนาบฐานมาตรฐาน
+    d_field = 3.6                  
+    theta_rad = math.radians(40.0)      
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 🧮 [RATIO TUNING] ปรับอัตราส่วนสเกลเชิงแสงและพิกเซลหลังบ้านใหม่ 
-    # ขยายพื้นที่รวมทั้งหมดให้สมจริง และลดการบีบอัดสเกลจากตัวคูณซูมให้เหมาะสม
+    # 🧮 อัตราส่วนสเกลเชิงแสงฐาน
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 115000.0 * (optical_scale ** 1.30)
+    pixel_to_m2_ratio = 165000.0 * (optical_scale ** 1.65)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -93,7 +91,6 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองพิกเซลสัญญาณรบกวนขนาดเล็กออก
             if a_pixels < 120:
                 continue
 
@@ -107,30 +104,37 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # 📈 [EXPANDED PERSPECTIVE] เพิ่มพลังการชดเชยทัศนียภาพแนวตั้ง (แกน Y)
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             
-            # ปรับสเกลฐานการหารและตัวคูณดึงความลึกให้สัมพันธ์กับระนาบสายตาไกล-ใกล้
-            depth_multiplier = (1.15 / (normalized_y + 0.22)) * (horizontal_dist / 1.5)
-            real_area_m2 = calculated_area * depth_multiplier
+            # 🧠 [HYBRID ADAPTIVE ALGORITHM] 
+            # ตรวจสอบพฤติกรรมภาพถ่าย: ถ้าวัตถุกระจุกหนาแน่นอยู่เฉพาะบริเวณกึ่งกลางล่างจอ (พฤติกรรมรูปกรอบเหลือง)
+            # เราจะบีบสเกลไม่ให้พื้นที่บวมเกินจริง แต่ถ้ากระจายตัวกว้าง (พฤติกรรมรูปตลิ่งแม่น้ำ) จะชดเชยสเกลให้เต็มมิติ
+            is_close_up_frame = (y_min > 0.40 and (x_max - x_min) < (w_img * 0.55))
 
-            # จัดการเงื่อนไขขอบเขตและเกลี่ยน้ำหนักตามความเหมาะสมเชิงพื้นที่จริง
-            if normalized_y > 0.70:
-                real_area_m2 = max(0.15, real_area_m2 * 1.10) # ดึงค่ากอขนาดใหญ่ใกล้ฝั่งริมตลิ่งขึ้น
+            if is_close_up_frame:
+                # 🎯 โหมดภาพถ่ายระยะใกล้ (เช่น รูปกรอบเหลือง 1x1 เมตร)
+                depth_multiplier = (0.75 / (normalized_y + 0.35)) * (horizontal_dist / 1.5)
+                real_area_m2 = calculated_area * depth_multiplier
+                # ควบคุมเพดานไม่ให้กอเดี่ยวในกรอบเหลืองคำนวณเกินจริง
+                real_area_m2 = min(0.65, real_area_m2) 
             else:
-                real_area_m2 = max(0.20, real_area_m2 * 1.35) # ชดเชยแรงบีบพิกเซลของกอฝั่งตรงข้ามที่อยู่ไกล
+                # 🌊 โหมดภาพถ่ายตลิ่งแม่น้ำระยะไกล-กว้าง (เช่น รูปริมตลิ่ง)
+                depth_multiplier = (1.25 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
+                real_area_m2 = calculated_area * depth_multiplier
+                
+                if normalized_y > 0.70:
+                    real_area_m2 = max(2.50, real_area_m2 * 1.30) # ดึงค่ากอใกล้ริมน้ำให้ใหญ่สมจริง
+                else:
+                    real_area_m2 = max(1.50, real_area_m2 * 1.60) # ดึงค่ากอฝั่งตรงข้ามที่อยู่ไกล
 
             real_area_m2 = round(real_area_m2, 2)
             
-            # บันทึกรายงานสถิติข้อความ
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบและจุดกึ่งกลางวัตถุ
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # พ่นหมายเลขลำดับกอขนาดใหญ่ ชดเชยไม่ให้บดบังทัศนียภาพ
             cv2.putText(
                 frame,
                 f"{i + 1}",
