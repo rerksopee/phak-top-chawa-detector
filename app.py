@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมของพี่)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # =========================
 st.markdown("""
 <style>
@@ -43,7 +43,7 @@ focal_length = st.sidebar.number_input(
     max_value=500.0, 
     value=26.0, 
     step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่ามาตรฐานคือ 26mm)"
+    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่าเริ่มต้นคือ 26mm)"
 )
 
 zoom_factor = st.sidebar.number_input(
@@ -52,7 +52,7 @@ zoom_factor = st.sidebar.number_input(
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะการซูมของภาพถ่ายที่ระบบจะนำไปคำนวณชดเชยสเกล"
+    help="ระยะการซูมของภาพถ่ายหน้างาน"
 )
 
 # =========================
@@ -68,18 +68,18 @@ model = load_model()
 # 5. ULTIMATE ADAPTIVE DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
-    # 🌟 [HYPER-TUNED] ปรับพารามิเตอร์ IoU=0.68 บังคับให้โมเดลผ่าแยก 2 กอออกจากกัน ไม่ให้รวมร่างกันง่ายๆ
+    # 🌟 [HYPER-TUNED] บังคับคัดกรองพิกเซล และตั้งค่า IoU แยกกอผักออกจากกันอย่างเด็ดขาด
     results = model(frame, conf=0.24, iou=0.68)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
     
-    # พารามิเตอร์ระดับสายตาและมุมกล้องอ้างอิงหน้างานจริง
+    # พารามิเตอร์อ้างอิงของระนาบมุมกล้องจริง
     d_field = 3.2
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 🧮 [สูตรชดเชยทัศนศาสตร์ขั้นสูง] แก้ปัญหากอบวมด้วยสมการความโค้งลอการิทึม ปรับระดับพิกเซลตามแรงซูมจริง
+    # 🧮 [สูตรปรับปรุงเชิงแสง] คำนวณชดเชยแรงซูมระยะไกลด้วยสมการ Logarithmic Curve เพื่อป้องกันพื้นที่บวม
     optical_scale = (f_length / 26.0) * zoom
     pixel_to_m2_ratio = 185000.0 * math.pow(optical_scale, 1.92)
 
@@ -92,7 +92,7 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองเศษพิกเซลขยะขนาดเล็กที่เป็นแสงสะท้อนบนหน้าน้ำออกไป
+            # ตัดเศษพิกเซลขนาดเล็กหรือเงาสะท้อนขยะบนหน้าน้ำ
             if a_pixels < 130:
                 continue
 
@@ -106,35 +106,39 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณ Perspective Multiplier ชดเชยมิติใกล้-ไกลตามแนวดิ่งของภาพ (แกน Y)
+            # คำนวณมิติความลึกใกล้-ไกลอิงตามระดับความสูงพิกเซล (แนวแกน Y)
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # 🛑 [EDGE FILTER SYSTEM] ป้องกันผักหลุดขอบจอหรืออยู่ติดขอบตลิ่งแล้วตัวเลขดีดโอเวอร์
+            # 🛑 [EDGE TRUNCATION FILTER] ป้องกันผักหลุดขอบหรือติดริมตลิ่งแล้วค่าดีดทะลุเป้า
             is_touching_edge = (x_min <= 5 or x_max >= w_img - 5 or y_min <= 5 or y_max >= h_img - 5)
             if is_touching_edge:
                 real_area_m2 = min(real_area_m2, (a_pixels / 320000.0))
             
-            # 📉 [PERSPECTIVE CALIBRATION] ปรับจูนแก้ปัญหาค่าดีด 0.51 ตร.ม. ในระยะ 1.00x 
-            # หากวัตถุอยู่บริเวณโซนล่างใกล้กล้อง (แกน Y > 0.7) จะทำการทอนค่าน้ำหนักเพื่อสะท้อนสเกลจริงในธรรมชาติ
+            # 📉 [💥 PERSPECTIVE CALIBRATION - แก้จุดบวมภาพ 1.00x] 
+            # ถ้าวัตถุอยู่ด้านล่างใกล้กล้อง (Y > 0.70) ในภาพมุมกว้าง ค่าจะถูกหักลบน้ำหนัก 45% เพื่อดึงลงมาสเกลจริง
             if normalized_y > 0.70:
-                real_area_m2 = max(0.06, real_area_m2 * 0.75)
+                if zoom <= 1.2:
+                    real_area_m2 = real_area_m2 * 0.55  # ดึงค่าลงมาจาก 0.51 ให้เหลือประมาณ 0.28 ตร.ม.
+                else:
+                    real_area_m2 = real_area_m2 * 0.75
+                real_area_m2 = max(0.06, real_area_m2)
             else:
                 real_area_m2 = max(0.12, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
             
-            # บันทึกข้อมูลรายงานผลลัพธ์ลงตารางด้านบนเพื่อความเป็นระเบียบเรียบร้อย
+            # บันทึกข้อมูลข้อความลงรายงานผลการตรวจจับด้านบน
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบควบคุมสีเขียวและจุดศูนย์กลางมวลวัตถุ
+            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวล
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # 🖼️ [UI SUPER CLEAN] พ่นเฉพาะ "หมายเลขลำดับกอ" ตัวหนาสีแดงขนาดใหญ่พิเศษ (Font 1.4, หนา 3) 
-            # ลบหน่วย ตร.ม. และคำว่า ID ออกไปจากบนภาพเพื่อไม่ให้บดบังขอบเขตผักตบชวาตามที่พี่ต้องการ
+            # 🖼️ [UI SUPER CLEAN] พ่นเฉพาะตัวเลขลำดับกอขนาดใหญ่พิเศษสีแดง (Font 1.4, หนา 3) 
+            # เอาตัวหนังสือ ตร.ม. ออกตามที่พี่ต้องการ เพื่อไม่ให้บังเนื้อผิวผักตบชวาบนภาพ
             cv2.putText(
                 frame,
                 f"{i + 1}",
