@@ -43,7 +43,7 @@ focal_length = st.sidebar.number_input(
     max_value=500.0, 
     value=26.0, 
     step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง"
+    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่าเริ่มต้นมาตรฐานคือ 26mm)"
 )
 
 zoom_factor = st.sidebar.number_input(
@@ -52,7 +52,7 @@ zoom_factor = st.sidebar.number_input(
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะซูมของภาพถ่าย"
+    help="ระยะการซูมของภาพถ่ายหน้างาน"
 )
 
 # =========================
@@ -65,23 +65,23 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. OPTIMIZED DETECTION ENGINE
+# 5. CORE ROBUST DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
-    # 🔥 [OPTIMIZED] ตั้งค่า iou=0.7 เพื่อแยกวัตถุที่อยู่เกยหรือชิดกันในระยะซูม ไม่ให้ยุบรวมกอ
-    results = model(frame, conf=0.25, iou=0.7)
+    # ⭐ [BEST CONFIG] จูนพารามิเตอร์เพื่อประสิทธิภาพสูงสุดในการตัดแบ่งวัตถุชิดขอบ ไม่ให้กอรวมกัน
+    results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
     
-    # พารามิเตอร์มุมกล้องหน้างานจริง
+    # พารามิเตอร์คงที่ของระนาบระดับสายตา ณ สถานที่ตรวจวัดจริง
     d_field = 3.2
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # ⚙️ [สูตรปรับปรุงใหม่] คำนวณอัตราส่วน pixel ต่อ ตร.ม. แบบ Linear ขจัดปัญหายิ่งซูมยิ่งบวม
+    # 🧮 [สูตรปรับปรุงสูงสุด] ล็อกอัตราส่วนเชิงเส้นตรง ป้องกันสเกลพิกเซลบวมตามแรงซูมของกล้อง
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 2.0)  # ปรับตัวคูณชดเชยแรงขยายภาพเชิงแสงให้คงที่
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.85)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -92,8 +92,8 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # คัดกรองพิกเซลขนาดเล็กหรือส่วนที่หลุดขอบเฟรมแบบไม่สมบูรณ์ออก
-            if a_pixels < 150:
+            # กรองเศษขยะพิกเซลขนาดเล็กหรือส่วนวัตถุที่หลุดขอบเฟรมแบบไม่สมบูรณ์
+            if a_pixels < 120:
                 continue
 
             ys, xs = np.where(binary)
@@ -106,34 +106,34 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณ Perspective (มิติความลึกใกล้-ไกลของระนาบน้ำ)
+            # คำนวณความลึกแบบผกผันตามสัญกรณ์ระดับความลึกพิกเซลแนวตั้ง (Perspective Compensation)
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # จัดการขอบเขตขั้นต่ำให้สอดคล้องกับขนาดกายภาพจริงในกรอบอ้างอิง
+            # ประเมินเกณฑ์ขั้นต่ำเชิงกายภาพจริงอิงตามระดับสายตาใกล้-ไกลบนผืนน้ำ
             if normalized_y > 0.70:
-                real_area_m2 = max(0.08, real_area_m2 * 0.80)
+                real_area_m2 = max(0.08, real_area_m2 * 0.82)
             else:
                 real_area_m2 = max(0.12, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
             
-            # บันทึกข้อมูลรายงานผลลัพธ์ลงตาราง
+            # บันทึกรายงานสถิติข้อความ
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบสี่เหลี่ยมและจุดศูนย์กลางเชิงกราฟิก
+            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # 🖼️ [BIG FONT] พ่นเฉพาะตัวเลขลำดับกอเด่น ๆ ขนาดใหญ่พิเศษ (Font 1.5, หนา 3) เพื่อความสะอาดสะอ้าน
+            # 🖼️ [UI CLEANUP] พ่นเฉพาะ "หมายเลขลำดับกอ" ขนาดใหญ่ 1.3 ความหนา 3 ชัดเจน ไม่รกรุงรังบนภาพ
             cv2.putText(
                 frame,
                 f"{i + 1}",
-                (x_min, y_min - 15),
+                (x_min, y_min - 12),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1.5,
+                1.3,
                 (0, 0, 255),
                 3
             )
@@ -176,6 +176,6 @@ if uploaded_file is not None and analyze:
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
-    ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา
+    ระบบตรวจจับและคำนวณพื้นที่ผักตบชวาเชิงแสงระดับพิกเซล
 </div>
 """, unsafe_allow_html=True)
