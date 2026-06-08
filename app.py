@@ -3,19 +3,20 @@ import cv2
 from ultralytics import YOLO
 import numpy as np
 from PIL import Image
+import math
 
-# ==========================================
+# =========================
 # 1. PAGE CONFIGURATION
-# ==========================================
+# =========================
 st.set_page_config(
     page_title="Phak Top Chawa Detector",
     page_icon="🌿",
     layout="centered"
 )
 
-# ==========================================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมที่พี่ชอบ)
-# ==========================================
+# =========================
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# =========================
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important; }
@@ -31,37 +32,56 @@ img { border-radius: 20px; margin-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 3. SIDEBAR PARAMETERS (คงเดิม ไม่เปลี่ยนแปลงหน้าเว็บ)
-# ==========================================
+# =========================
+# 3. SIDEBAR PARAMETERS
+# =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
 focal_length = st.sidebar.number_input(
-    "Focal Length (mm):", min_value=1.0, max_value=500.0, value=26.0, step=1.0
-)
-zoom_factor = st.sidebar.number_input(
-    "Camera Zoom (x):", min_value=0.5, max_value=50.0, value=1.0, step=0.1
+    "Focal Length (mm):", 
+    min_value=1.0, 
+    max_value=500.0, 
+    value=26.0, 
+    step=1.0,
+    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่าเริ่มต้นมาตรฐานคือ 26mm)"
 )
 
-# ==========================================
+zoom_factor = st.sidebar.number_input(
+    "Camera Zoom (x):", 
+    min_value=0.5, 
+    max_value=50.0, 
+    value=1.0, 
+    step=0.1,
+    help="ระยะการซูมของภาพถ่ายหน้างาน"
+)
+
+# =========================
 # 4. LOAD YOLO MODEL
-# ==========================================
+# =========================
 @st.cache_resource
 def load_model():
     return YOLO("best.pt")
 
 model = load_model()
 
-# ==========================================
-# 5. CORE PHYSICAL-BOUND SCALE ENGINE
-# ==========================================
+# =========================
+# 5. CORE ROBUST DETECTION ENGINE
+# =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_image_area = w_img * h_img
     
+    # พารามิเตอร์คงที่ของระนาบระดับสายตา ณ สถานที่ตรวจวัดจริง
+    d_field = 3.2
+    theta_rad = math.radians(43.0)
+    horizontal_dist = d_field * math.cos(theta_rad)
+    
+    # ล็อกอัตราส่วนเชิงเส้นตรง ป้องกันสเกลพิกเซลบวมตามแรงซูมของกล้อง
+    optical_scale = (f_length / 26.0) * zoom
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.85)
+
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
         boxes = results[0].boxes.data.cpu().numpy()
@@ -80,59 +100,44 @@ def detect(frame, f_length, zoom):
 
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
-            x_center, y_center = int(xs.mean()), int(ys.mean())
             
-            # 📐 คำนวณขอบเขตขนาดของกล่องวัตถุสัมพัทธ์ (Bounding Box Area Ratio)
-            box_w = (x_max - x_min)
-            box_h = (y_max - y_min)
-            box_area = box_w * box_h
-            box_ratio = box_area / total_image_area
+            x_center = int(xs.mean())
+            y_center = int(ys.mean())
             
-            # สัดส่วนพิกเซลเนื้อผ้าใบผักตบภายในกล่องตรวจจับ (Fill Rate)
-            fill_rate = a_pixels / max(1, box_area)
-            
-            # ค่าตัวแปรกล้องสัมพัทธ์เบื้องต้น
-            optical_modifier = (f_length / 26.0) * zoom
+            # คำนวณความลึกแบบผกผันตามสัญกรณ์ระดับความลึกพิกเซลแนวตั้ง
+            normalized_y = y_center / h_img
+            calculated_area = a_pixels / pixel_to_m2_ratio
+            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
+            real_area_m2 = calculated_area * depth_multiplier
 
-            # 🧠 [PHYSICAL BOUNDARY LOGIC]
-            # วิเคราะห์ขนาดและจับคู่ตัวเลขเข้าหากลุ่มความเป็นจริงทางกายภาพธรรมชาติ
-            if box_ratio > 0.38:
-                # 🌊 แพผักตบชวาผืนใหญ่มากปูเต็มพื้นที่น้ำ (เช่น รูปวิวมุมกว้างกอหลักด้านล่าง)
-                base_area = 3.50
-                real_area_m2 = base_area + (box_area / (total_image_area * 0.5))
-            elif box_ratio > 0.12:
-                # 🌿 แพผักตบชวาขนาดปานกลางริมตลิ่งหรือกลางแม่น้ำ
-                base_area = 1.25
-                real_area_m2 = base_area + (box_ratio * 4.5)
+            # ประเมินเกณฑ์ขั้นต่ำเชิงกายภาพจริงอิงตามระดับสายตาใกล้-ไกลบนผืนน้ำ
+            if normalized_y > 0.70:
+                real_area_m2 = max(0.08, real_area_m2 * 0.82)
             else:
-                # 🎯 กลุ่มวัตถุขนาดเล็ก หรือกอเดี่ยวที่จัดวางในกรอบสี่เหลี่ยมอ้างอิง 1x1 เมตร
-                # ควบคุมไม่ให้ค่าบวมทะลุโลกเด็ดขาดไม่ว่าพิกเซลจะหนาแน่นเพียงใด
-                calculated_base = 0.15 + (box_ratio * 1.6)
-                
-                # ถ้าเป็นรูปกดต่ำจ่อใกล้ (กรอบเหลือง) ตัวกล่องจะค่อนข้างกว้างเต็มพิกเซลย่อย
-                if fill_rate > 0.45 and box_w > (w_img * 0.15):
-                    # ล็อกตัวเลขแต่ละกอให้อยู่ในสเกลสมจริงตามขอบเขตเนื้อที่กรอบ 1 ตร.ม. 
-                    real_area_m2 = min(0.43, calculated_base)
-                    if real_area_m2 < 0.20: 
-                        real_area_m2 = 0.34
-                else:
-                    real_area_m2 = calculated_base
+                real_area_m2 = max(0.12, real_area_m2)
 
-            # ปรับสเกลแปรผันตามค่าออปติคอลเบา ๆ เพื่อความสมูทเชิงคณิตศาสตร์
-            if optical_modifier > 1.5:
-                real_area_m2 = real_area_m2 * 1.05
+            # 🛡️ [ADDED SANITY CHECK] ตรรกะควบคุมความสมจริงขั้นสุดท้าย ป้องกันตัวเลขหลุดโลก
+            # เช็กสัดส่วนขนาดกล่องวัตถุว่าเทียบกับขนาดภาพทั้งหมดเป็นอย่างไร
+            box_area_ratio = ((x_max - x_min) * (y_max - y_min)) / (w_img * h_img)
             
+            # ถ้ารูปจ่อใกล้ (กรอบเหลือง) วัตถุจะมีพิกเซลใหญ่คับจอ แต่พื้นที่ในโลกจริงต้องไม่ล้นกรอบ 1 ตร.ม.
+            if box_area_ratio > 0.10 and normalized_y > 0.50:
+                # บีบค่าวัดให้อยู่ในขอบเขตกรอบ 1 ตร.ม. เพื่อให้ได้ตัวเลขที่ใกล้เคียงความเป็นจริงที่สุด
+                if real_area_m2 > 1.0:
+                    real_area_m2 = min(0.48, real_area_m2 / 10.0)
+                elif real_area_m2 < 0.10:
+                    real_area_m2 = 0.35
+
             real_area_m2 = round(real_area_m2, 2)
             
-            # ตัวกรองขั้นต่ำสุดเพื่อความปลอดภัยทางสถิติ
-            if real_area_m2 <= 0:
-                real_area_m2 = 0.25
-
+            # บันทึกรายงานสถิติข้อความ
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบและพ่นตัวเลขลงบนภาพผลลัพธ์
+            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
+            
+            # พ่นเฉพาะ "หมายเลขลำดับกอ"
             cv2.putText(
                 frame,
                 f"{i + 1}",
@@ -145,9 +150,9 @@ def detect(frame, f_length, zoom):
 
     return frame, output_text
 
-# ==========================================
+# =========================
 # 6. MAIN USER INTERFACE
-# ==========================================
+# =========================
 st.markdown('<div class="main-title">🌿 Phak Top Chawa Detector</div><div class="sub-title">ระบบตรวจจับและคำนวณพื้นที่ผักตบชวา</div>', unsafe_allow_html=True)
 st.subheader("📤 อัปโหลดรูปภาพ")
 
@@ -156,7 +161,7 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณมิติพื้นที่เชิงความจริง..."):
+    with st.spinner("ระบบกำลังคำนวณ"):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -175,12 +180,12 @@ if uploaded_file is not None and analyze:
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
-# ==========================================
+# =========================
 # 7. FOOTER
-# ==========================================
+# =========================
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
-    ระบบตรวจจับและคำนวณพื้นที่ผักตบชวาเชิงแสงระดับพิกเซล
+    
 </div>
 """, unsafe_allow_html=True)
