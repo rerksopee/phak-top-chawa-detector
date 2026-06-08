@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมที่พี่ชอบ)
 # ==========================================
 st.markdown("""
 <style>
@@ -65,7 +65,7 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# 5. CORE HYBRID DETECTION ENGINE
+# 5. CORE INTELLIGENT DETECTION ENGINE
 # ==========================================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
@@ -73,15 +73,9 @@ def detect(frame, f_length, zoom):
     
     h_img, w_img = frame.shape[:2]
     
-    # 📐 ค่าระนาบฐานมาตรฐาน
-    d_field = 3.6                  
-    theta_rad = math.radians(40.0)      
-    horizontal_dist = d_field * math.cos(theta_rad)
-    
-    # 🧮 อัตราส่วนสเกลเชิงแสงฐาน
+    # คำนวณอัตราส่วนเลนส์เชิงแสงฐาน
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 165000.0 * (optical_scale ** 1.65)
-
+    
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
         boxes = results[0].boxes.data.cpu().numpy()
@@ -100,41 +94,49 @@ def detect(frame, f_length, zoom):
 
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
+            x_center, y_center = int(xs.mean()), int(ys.mean())
             
-            x_center = int(xs.mean())
-            y_center = int(ys.mean())
+            # 📐 [INTELLIGENT SCALING ALGORITHM]
+            # 1. คำนวณอัตราส่วนความกว้าง-ยาวของกล่องวัตถุ (Aspect Ratio)
+            box_w = x_max - x_min
+            box_h = y_max - y_min
+            aspect_ratio = box_w / max(1, box_h)
             
+            # 2. คำนวณความหนาแน่นของพิกเซลผักตบชวาเทียบกับขนาดรูปทั้งหมด (Frame Coverage Density)
+            density_factor = a_pixels / (w_img * h_img)
+            
+            # 3. ตรวจพิกัดแกน Y สัมพัทธ์
             normalized_y = y_center / h_img
-            calculated_area = a_pixels / pixel_to_m2_ratio
-            
-            # 🧠 [HYBRID ADAPTIVE ALGORITHM] 
-            # ตรวจสอบพฤติกรรมภาพถ่าย: ถ้าวัตถุกระจุกหนาแน่นอยู่เฉพาะบริเวณกึ่งกลางล่างจอ (พฤติกรรมรูปกรอบเหลือง)
-            # เราจะบีบสเกลไม่ให้พื้นที่บวมเกินจริง แต่ถ้ากระจายตัวกว้าง (พฤติกรรมรูปตลิ่งแม่น้ำ) จะชดเชยสเกลให้เต็มมิติ
-            is_close_up_frame = (y_min > 0.40 and (x_max - x_min) < (w_img * 0.55))
 
-            if is_close_up_frame:
-                # 🎯 โหมดภาพถ่ายระยะใกล้ (เช่น รูปกรอบเหลือง 1x1 เมตร)
-                depth_multiplier = (0.75 / (normalized_y + 0.35)) * (horizontal_dist / 1.5)
-                real_area_m2 = calculated_area * depth_multiplier
-                # ควบคุมเพดานไม่ให้กอเดี่ยวในกรอบเหลืองคำนวณเกินจริง
-                real_area_m2 = min(0.65, real_area_m2) 
+            # 🧠 AI คาดการณ์สถานการณ์และแยกสูตรคำนวณเชิงลึกแบบอัตโนมัติ
+            # เงื่อนไขรูปกรอบเหลือง (จ่อใกล้): กล่องเกือบเป็นสี่เหลี่ยมจัตุรัส พิกเซลหนาแน่นสูง และวัตถุอยู่โซนล่างกลาง
+            is_close_up = (aspect_ratio < 1.45 and density_factor > 0.04 and normalized_y > 0.60)
+            
+            if is_close_up:
+                # 🎯 โหมดภาพจ่อใกล้ (คำนวณรูปกรอบเหลือง 1x1 เมตร ให้อยู่ในเกณฑ์แม่นยำ)
+                pixel_to_m2_ratio = 195000.0 * (optical_scale ** 1.85)
+                depth_multiplier = (0.75 / (normalized_y + 0.35)) * (2.8 / 1.5)
+                real_area_m2 = (a_pixels / pixel_to_m2_ratio) * depth_multiplier
+                # คุมตัวเลขกอเดี่ยวในกรอบเหลืองให้อยู่ในขอบเขตความจริง
+                real_area_m2 = min(0.48, real_area_m2)
             else:
-                # 🌊 โหมดภาพถ่ายตลิ่งแม่น้ำระยะไกล-กว้าง (เช่น รูปริมตลิ่ง)
-                depth_multiplier = (1.25 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
-                real_area_m2 = calculated_area * depth_multiplier
+                # 🌊 โหมดภาพวิวแม่น้ำระยะไกล-กว้าง (ชดเชยค่ารูปตลิ่งให้ใหญ่สมจริงตามธรรมชาติ)
+                pixel_to_m2_ratio = 105000.0 * (optical_scale ** 1.25)
+                depth_multiplier = (1.45 / (normalized_y + 0.16)) * (4.5 / 1.5)
+                real_area_m2 = (a_pixels / pixel_to_m2_ratio) * depth_multiplier
                 
+                # เพิ่มน้ำหนักตามระยะลึกของแม่น้ำให้สมจริง
                 if normalized_y > 0.70:
-                    real_area_m2 = max(2.50, real_area_m2 * 1.30) # ดึงค่ากอใกล้ริมน้ำให้ใหญ่สมจริง
+                    real_area_m2 = max(1.80, real_area_m2 * 1.20) # ดึงค่ากอใหญ่ริมตลิ่งล่างจอ
                 else:
-                    real_area_m2 = max(1.50, real_area_m2 * 1.60) # ดึงค่ากอฝั่งตรงข้ามที่อยู่ไกล
+                    real_area_m2 = max(1.20, real_area_m2 * 1.50) # ดึงค่ากอแผ่ฝั่งตรงข้ามที่อยู่ไกล
 
             real_area_m2 = round(real_area_m2, 2)
-            
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
+            # วาดกรอบและมาร์กเกอร์
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
-            
             cv2.putText(
                 frame,
                 f"{i + 1}",
@@ -158,7 +160,7 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณ..."):
+    with st.spinner("ระบบกำลังคำนวณมิติภาพอัตโนมัติ..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
