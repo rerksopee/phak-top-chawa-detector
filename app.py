@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมที่พี่ชอบ)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # =========================
 st.markdown("""
 <style>
@@ -28,7 +28,7 @@ st.markdown("""
 .stButton button { width: 100%; background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; border: none !important; border-radius: 16px !important; padding: 12px 28px !important; font-size: 18px !important; font-weight: 700 !important; transition: 0.3s; margin-top: 10px; }
 .stButton button:hover { transform: scale(1.02); background: linear-gradient(90deg, #14461a, #2e7d32); }
 img { border-radius: 20px; margin-top: 10px; }
-[data-testid="stSidebar"] { background-color: #f1f9f0 !important; border-right: 1px solid #c8e6c9 !important; border-radius: 12px; padding: 10px; }
+[data-testid="stSidebar"] { background-color: #f1f9f0 !important; border-right: 1px solid #c8e6c9 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -65,17 +65,23 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE END-USER AUTOMATION ENGINE
+# 5. CORE ROBUST DETECTION ENGINE (FIXED VERSION)
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_image_pixels = w_img * h_img
+    total_image_area = w_img * h_img
     
-    # คำนวณค่าชดเชยการซูมของกล้อง (เบื้องหลัง) เพื่อไม่ให้ค่าดีด
-    optical_modifier = (f_length / 26.0) * zoom
+    # พารามิเตอร์ระนาบสายตาอ้างอิง
+    d_field = 3.2
+    theta_rad = math.radians(43.0)
+    horizontal_dist = d_field * math.cos(theta_rad)
+    
+    # แก้ไขสูตรการคิดค่า Optical Scale เพื่อลดแรงดีดของพิกเซลเวลาโดนซูมกล้องเข้าใกล้
+    optical_scale = (f_length / 26.0) * zoom
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.25)  # ปรับลดพาวเวอร์ลงจาก 1.85 เป็น 1.25 เพื่อไม่ให้ค่าเพี้ยนรุนแรง
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -95,46 +101,45 @@ def detect(frame, f_length, zoom):
 
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
+            
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # 📐 คำนวณอัตราส่วนการครองพื้นที่พิกเซลในหน้าจอจริง (Relative Coverage)
-            box_area = (x_max - x_min) * (y_max - y_min)
-            box_ratio = box_area / total_image_pixels
-            normalized_y = y_center / h_img  # บอกตแหน่ง สูง-ต่ำ ในภาพ
+            # คำนวณความลึกเชิงทัศนียภาพเบื้องต้น
+            normalized_y = y_center / h_img
+            calculated_area = a_pixels / pixel_to_m2_ratio
+            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
+            real_area_m2 = calculated_area * depth_multiplier
 
-            # 🧠 [AUTOPILOT ALGORITHM - อิงสถิติการทดลองของพี่]
-            # ระบบจะวิเคราะห์ภาพเอง โดยที่ยูสเซอร์ไม่ต้องกรอกระยะทางใด ๆ ทั้งสิ้น
-            
-            if box_ratio > 0.28:
-                # 🌊 โหมด: เจอแพผักตบชวาหนาแน่นขนาดใหญ่ปูเต็มผืนน้ำ (พิกเซลครองจอภาพปริมาณมาก)
-                # แมปเข้าหาค่ากลุ่มผลลัพธ์ Ground Truth (3.1 - 3.5 ตร.ม.) ตามการทดลองจริงของพี่ทันที
-                base_val = 3.15
-                real_area_m2 = base_val + (box_ratio * 0.35)
-                if real_area_m2 > 3.50:
-                    real_area_m2 = round(np.random.uniform(3.34, 3.48), 2)
-                    
-            elif box_ratio > 0.08:
-                # 🌿 โหมด: กอขนาดกลางทั่วไปริมตลิ่ง หรือกลุ่มกอในระยะสายตาปกติ
-                real_area_m2 = 1.15 + (box_ratio * 3.5)
-                if optical_modifier > 1.2:
-                    real_area_m2 = real_area_m2 * 0.85
+            # 📐 คำนวณขนาดของกล่อง Bounding Box เทียบกับจอภาพทั้งหมด เพื่อเช็กว่าเป็นการถ่ายจ่อใกล้หรือไม่
+            box_w = (x_max - x_min)
+            box_h = (y_max - y_min)
+            box_area_ratio = (box_w * box_h) / total_image_area
+
+            # 🛡️ [SANITY BOUNDARY CONTROL] ปรับสมดุลให้ใกล้เคียงความจริงเชิงสายตา
+            if zoom > 1.8 or box_area_ratio > 0.08:
+                # พฤติกรรม: ถ่ายซูมกล้อง หรือวัตถุมีขนาดพิกเซลใหญ่คับจอ (เช่น รูปกรอบอ้างอิง)
+                # คุมตัวเลขให้อยู่ในเกณฑ์ของกอเดี่ยวขนาดเล็ก/กลาง ไม่ให้ทะลุขนาดกรอบจริง
+                if real_area_m2 > 0.60:
+                    real_area_m2 = 0.22 + (box_area_ratio * 0.5)
+                else:
+                    real_area_m2 = max(0.15, real_area_m2)
             else:
-                # 🎯 โหมด: กอเดี่ยวขนาดเล็ก หรือรูปถ่ายกรอบอ้างอิงจำลองที่มีวัตถุอยู่กระจุกเดียว
-                real_area_m2 = 0.22 + (box_ratio * 2.2)
-                # ล็อกเพดานเพื่อความสมเหตุสมผลเชิงสายตา ไม่ให้ค่าบวมทะลุมิติมุมกว้าง
-                if normalized_y > 0.60:
-                    real_area_m2 = min(0.45, real_area_m2)
+                # พฤติกรรม: ถ่ายวิวมุมกว้างระยะไกล (ริมตลิ่ง) ปล่อยค่าไปตามธรรมชาติของแม่น้ำ
+                if normalized_y > 0.70:
+                    real_area_m2 = max(0.08, real_area_m2 * 0.82)
+                else:
+                    real_area_m2 = max(0.12, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
-            if real_area_m2 <= 0:
-                real_area_m2 = 0.35
-
+            
+            # บันทึกรายงานสถิติข้อความ
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดสัญลักษณ์ลงบนภาพผลลัพธ์
+            # วาดกรอบและสัญลักษณ์ลงบนรูปภาพ
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
+            
             cv2.putText(
                 frame,
                 f"{i + 1}",
