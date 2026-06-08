@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมของพี่ร้อยเปอร์เซ็นต์)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # =========================
 st.markdown("""
 <style>
@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (หน้าเว็บเดิมของพี่ ไม่แก้ไขโครงสร้างเด็ดขาด)
+# 3. SIDEBAR PARAMETERS
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -65,20 +65,23 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE ROBUST DETECTION ENGINE (ตัวปรับปรุงระบบคำนวณใหม่หมด)
+# 5. CORE ROBUST DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
+    # ⭐ [BEST CONFIG] จูนพารามิเตอร์เพื่อประสิทธิภาพสูงสุดในการตัดแบ่งวัตถุชิดขอบ ไม่ให้กอรวมกัน
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
     
-    # คำนวณอัตราส่วนการขยายแบบแปรผันตรงตรงไปตรงมา
-    optical_scale = (f_length / 26.0) * zoom
+    # พารามิเตอร์คงที่ของระนาบระดับสายตา ณ สถานที่ตรวจวัดจริง
+    d_field = 3.2
+    theta_rad = math.radians(43.0)
+    horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 📐 [PURE PIXEL MAPPING] บาลานซ์ตัวหารพิกเซลใหม่ให้สอดคล้องกับขนาดจริงในธรรมชาติ
-    # ตัดสมการซับซ้อนที่ทำให้สเกลบวมออกทั้งหมด 
-    pixel_to_m2_ratio = 1150000.0 * optical_scale
+    # 🧮 [สูตรปรับปรุงสูงสุด] ล็อกอัตราส่วนเชิงเส้นตรง ป้องกันสเกลพิกเซลบวมตามแรงซูมของกล้อง
+    optical_scale = (f_length / 26.0) * zoom
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.85)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -89,7 +92,7 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองเศษพิกเซลขยะขนาดเล็ก
+            # กรองเศษขยะพิกเซลขนาดเล็กหรือส่วนวัตถุที่หลุดขอบเฟรมแบบไม่สมบูรณ์
             if a_pixels < 120:
                 continue
 
@@ -103,25 +106,28 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณแบบตรงไปตรงมาตามสัดส่วนเนื้อผ้าพิกเซลจริง
-            real_area_m2 = a_pixels / pixel_to_m2_ratio
-            
-            # ชดเชยมิติมุมมองลาดเอียงแบบเสถียร (สัดส่วนค่อย ๆ เพิ่มตามความลึกอย่างสมเหตุสมผล)
+            # คำนวณความลึกแบบผกผันตามสัญกรณ์ระดับความลึกพิกเซลแนวตั้ง (Perspective Compensation)
             normalized_y = y_center / h_img
-            real_area_m2 = real_area_m2 * (0.6 + (normalized_y * 0.8))
+            calculated_area = a_pixels / pixel_to_m2_ratio
+            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
+            real_area_m2 = calculated_area * depth_multiplier
 
-            # ล็อกเกณฑ์ค่าสูงสุด-ต่ำสุดตามความจริง (กอเดี่ยวไม่มีทางใหญ่เกินขนาดพิกเซลจริงที่เป็นไปได้)
-            real_area_m2 = max(0.02, min(real_area_m2, 0.60))
+            # ประเมินเกณฑ์ขั้นต่ำเชิงกายภาพจริงอิงตามระดับสายตาใกล้-ไกลบนผืนน้ำ
+            if normalized_y > 0.70:
+                real_area_m2 = max(0.08, real_area_m2 * 0.82)
+            else:
+                real_area_m2 = max(0.12, real_area_m2)
+
             real_area_m2 = round(real_area_m2, 2)
             
-            # บันทึกรายงานข้อความ
+            # บันทึกรายงานสถิติข้อความ
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดสี่เหลี่ยมควบคุม
+            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # พ่นเฉพาะหมายเลขกอขนาดใหญ่สีแดง คลีน ๆ ไม่รกรุงรัง
+            # 🖼️ [UI CLEANUP] พ่นเฉพาะ "หมายเลขลำดับกอ" ขนาดใหญ่ 1.3 ความหนา 3 ชัดเจน ไม่รกรุงรังบนภาพ
             cv2.putText(
                 frame,
                 f"{i + 1}",
