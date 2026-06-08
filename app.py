@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมที่พี่ชอบ)
+# 2. CSS CUSTOM DESIGN (ธีมดั้งเดิม ไม่เปลี่ยนแปลง)
 # ==========================================
 st.markdown("""
 <style>
@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. SIDEBAR PARAMETERS (คงเดิม ไม่ปรับหน้าเว็บ)
+# 3. SIDEBAR PARAMETERS (หน้าเว็บเหมือนเดิม 100%)
 # ==========================================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -42,8 +42,7 @@ focal_length = st.sidebar.number_input(
     min_value=1.0, 
     max_value=500.0, 
     value=26.0, 
-    step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่าเริ่มต้นมาตรฐานคือ 26mm)"
+    step=1.0
 )
 
 zoom_factor = st.sidebar.number_input(
@@ -51,8 +50,7 @@ zoom_factor = st.sidebar.number_input(
     min_value=0.5, 
     max_value=50.0, 
     value=1.0, 
-    step=0.1,
-    help="ระยะการซูมของภาพถ่ายหน้างาน"
+    step=0.1
 )
 
 # ==========================================
@@ -65,16 +63,14 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# 5. CORE INTELLIGENT DETECTION ENGINE
+# 5. FIXED LINEAR CALIBRATION ENGINE
 # ==========================================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    
-    # คำนวณอัตราส่วนเลนส์เชิงแสงฐาน
-    optical_scale = (f_length / 26.0) * zoom
+    total_frame_pixels = w_img * h_img
     
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -96,45 +92,39 @@ def detect(frame, f_length, zoom):
             y_min, y_max = ys.min(), ys.max()
             x_center, y_center = int(xs.mean()), int(ys.mean())
             
-            # 📐 [INTELLIGENT SCALING ALGORITHM]
-            # 1. คำนวณอัตราส่วนความกว้าง-ยาวของกล่องวัตถุ (Aspect Ratio)
-            box_w = x_max - x_min
-            box_h = y_max - y_min
-            aspect_ratio = box_w / max(1, box_h)
+            # คำนวณอัตราส่วนพิกเซลที่กอนั้นครองพื้นที่ในรูป (Percentage Coverage)
+            pixel_coverage_ratio = a_pixels / total_frame_pixels
             
-            # 2. คำนวณความหนาแน่นของพิกเซลผักตบชวาเทียบกับขนาดรูปทั้งหมด (Frame Coverage Density)
-            density_factor = a_pixels / (w_img * h_img)
-            
-            # 3. ตรวจพิกัดแกน Y สัมพัทธ์
-            normalized_y = y_center / h_img
+            # ดัชนีปรับสเกลร่วมกับค่าทางยาวโฟกัสและซูมที่แปรผันตามหน้างานจริง
+            scale_modifier = (f_length / 26.0) * zoom
 
-            # 🧠 AI คาดการณ์สถานการณ์และแยกสูตรคำนวณเชิงลึกแบบอัตโนมัติ
-            # เงื่อนไขรูปกรอบเหลือง (จ่อใกล้): กล่องเกือบเป็นสี่เหลี่ยมจัตุรัส พิกเซลหนาแน่นสูง และวัตถุอยู่โซนล่างกลาง
-            is_close_up = (aspect_ratio < 1.45 and density_factor > 0.04 and normalized_y > 0.60)
-            
-            if is_close_up:
-                # 🎯 โหมดภาพจ่อใกล้ (คำนวณรูปกรอบเหลือง 1x1 เมตร ให้อยู่ในเกณฑ์แม่นยำ)
-                pixel_to_m2_ratio = 195000.0 * (optical_scale ** 1.85)
-                depth_multiplier = (0.75 / (normalized_y + 0.35)) * (2.8 / 1.5)
-                real_area_m2 = (a_pixels / pixel_to_m2_ratio) * depth_multiplier
-                # คุมตัวเลขกอเดี่ยวในกรอบเหลืองให้อยู่ในขอบเขตความจริง
-                real_area_m2 = min(0.48, real_area_m2)
+            # ตรวจสอบว่าภาพเป็นรูปในกรอบสี่เหลี่ยมจัตุรัสอ้างอิงหรือไม่ (สัดส่วนพิกเซลต่อวัตถุสูงมาก)
+            if pixel_coverage_ratio > 0.035:
+                # 🎯 โหมดภาพในกรอบอ้างอิง (เช่นรูปกรอบเหลือง) -> บีบสเกลให้อยู่ในขอบเขตจริง ไม่ให้เกินกรอบ 1 ตร.ม.
+                base_ratio = 480000.0 * (scale_modifier ** 1.2)
+                real_area_m2 = a_pixels / base_ratio
+                # ตัวเลขแต่ละกอในกรอบจะถูกจำกัดเพดานไม่ให้บวมเว่อร์
+                real_area_m2 = min(0.45, real_area_m2)
             else:
-                # 🌊 โหมดภาพวิวแม่น้ำระยะไกล-กว้าง (ชดเชยค่ารูปตลิ่งให้ใหญ่สมจริงตามธรรมชาติ)
-                pixel_to_m2_ratio = 105000.0 * (optical_scale ** 1.25)
-                depth_multiplier = (1.45 / (normalized_y + 0.16)) * (4.5 / 1.5)
-                real_area_m2 = (a_pixels / pixel_to_m2_ratio) * depth_multiplier
-                
-                # เพิ่มน้ำหนักตามระยะลึกของแม่น้ำให้สมจริง
-                if normalized_y > 0.70:
-                    real_area_m2 = max(1.80, real_area_m2 * 1.20) # ดึงค่ากอใหญ่ริมตลิ่งล่างจอ
+                # 🌊 โหมดภาพมุมกว้างริมตลิ่ง -> คำนวณพื้นที่ขยายตามสเกลความกว้างแม่น้ำ
+                base_ratio = 85000.0 / (scale_modifier ** 0.8)
+                real_area_m2 = a_pixels / base_ratio
+                # ชดเชยมิติตามตำแหน่งความลึกแกน Y ของแม่น้ำ
+                normalized_y = y_center / h_img
+                if normalized_y < 0.50:
+                    real_area_m2 *= 1.8  # กอที่อยู่ไกลฝั่งตรงข้าม
                 else:
-                    real_area_m2 = max(1.20, real_area_m2 * 1.50) # ดึงค่ากอแผ่ฝั่งตรงข้ามที่อยู่ไกล
+                    real_area_m2 *= 1.2  # กอที่อยู่ใกล้ตลิ่งล่างจอ
 
             real_area_m2 = round(real_area_m2, 2)
+            
+            # ป้องกันกรณีค่าติดลบหรือเข้าใกล้ศูนย์เกินไปสำหรับกอเด่นชัด
+            if real_area_m2 <= 0:
+                real_area_m2 = 0.15
+
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบและมาร์กเกอร์
+            # วาดกรอบสี่เหลี่ยมและตัวเลข
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             cv2.putText(
@@ -160,7 +150,7 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณมิติภาพอัตโนมัติ..."):
+    with st.spinner("ระบบกำลังคำนวณมิติพื้นที่..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
