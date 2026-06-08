@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. SIDEBAR PARAMETERS (ปรับเป็น Dynamic แล้ว)
+# 3. SIDEBAR PARAMETERS (เหลือเฉพาะค่าที่ User รู้จริง)
 # ==========================================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่ายเชิงแสง")
 
@@ -48,34 +48,11 @@ focal_length = st.sidebar.number_input(
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=0.5, 
+    min_value=1.0, # เริ่มต้นที่ 1.0x เสมอตามสายตามนุษย์
     max_value=50.0, 
     value=1.0, 
     step=0.1,
-    help="ระยะการซูมของภาพถ่ายหน้างาน"
-)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🏹 ค่าจากเครื่องวัดเลเซอร์หน้างาน")
-st.sidebar.info("💡 กรอกค่าตามรูปเครื่องวัดระยะของแต่ละสถาณการณ์ (เช่น ยืนบนดิน หรือ บนสะพาน)")
-
-# เปลี่ยนตัวแปรคงที่เป็นอินพุตรับค่าจริงหน้างาน เพื่อชดเชยมิติ Perspective ตามภาพจริง
-laser_dist = st.sidebar.number_input(
-    "Distance ระยะจากเลเซอร์ (เมตร):",
-    min_value=0.5,
-    max_value=100.0,
-    value=3.2,
-    step=0.1,
-    help="ระยะเฉียง Slope Distance ที่อ่านจากเครื่องวัดเลเซอร์หน้างาน"
-)
-
-laser_angle = st.sidebar.number_input(
-    "Angle มุมก้มจากเลเซอร์ (องศา):",
-    min_value=1.0,
-    max_value=90.0,
-    value=43.0,
-    step=1.0,
-    help="มุมลาดเอียง Pitch Angle ที่อ่านจากเครื่องวัดเลเซอร์หน้างาน"
+    help="ระยะการซูมของภาพถ่ายหน้างานที่กดบนหน้าจอมือถือ"
 )
 
 # ==========================================
@@ -88,20 +65,30 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# 5. CORE DYNAMIC DETECTION ENGINE
+# 5. CORE USER-CENTRIC DETECTION ENGINE
 # ==========================================
-def detect(frame, f_length, zoom, d_field, pitch_angle):
-    # ⭐ [BEST CONFIG] จูนพารามิเตอร์ตัดแบ่งวัตถุชิดขอบ ไม่ให้กอรวมกัน
+def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
     
-    # 📐 ตรีโกณมิติแปรผันตามค่าหน้างานจริงที่พี่ยืนถ่าย (บนดิน/สะพาน)
+    # 🧠 [AI PREDICTIVE PERSPECTIVE] 
+    # แปลง "แรงซูม" เป็น "ระยะทางและมุมก้ม" อัตโนมัติด้วยสมการพฤติกรรมผู้ใช้
+    if zoom <= 1.0:
+        d_field = 3.2          # ยืนใกล้ริมน้ำ ถ่ายกรอบเหลืองบนดิน
+        pitch_angle = 43.0
+    else:
+        # ยิ่งซูมเยอะ แปลว่าวัตถุยิ่งอยู่ไกลออกไป (เช่น อยู่บนสะพาน หรือกลางน้ำ)
+        # ตัวคูณระยะทางจะค่อยๆ เพิ่มขึ้นตามลำดับการซูม และมุมก้มจะราบลงตามทัศนียภาพ
+        d_field = 3.2 + ((zoom - 1.0) * 2.8)
+        pitch_angle = max(20.0, 43.0 - ((zoom - 1.0) * 12.0))
+    
+    # คำนวณระยะราบทางตรีโกณมิติจากค่าที่ประมาณการได้
     theta_rad = math.radians(pitch_angle)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 🧮 คำนวณอัตราส่วนเลนส์และเซนเซอร์เชิงฟิสิกส์
+    # คำนวณอัตราส่วนเลนส์และเซนเซอร์เชิงฟิสิกส์
     optical_scale = (f_length / 26.0) * zoom
     pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.85)
 
@@ -114,7 +101,6 @@ def detect(frame, f_length, zoom, d_field, pitch_angle):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองเศษขยะพิกเซลขนาดเล็กหรือส่วนวัตถุที่หลุดขอบเฟรม
             if a_pixels < 120:
                 continue
 
@@ -124,32 +110,26 @@ def detect(frame, f_length, zoom, d_field, pitch_angle):
 
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
+            x_center, y_center = int(xs.mean()), int(ys.mean())
             
-            x_center = int(xs.mean())
-            y_center = int(ys.mean())
-            
-            # คำนวณความลึกแบบผกผันตามสัญกรณ์ระดับความลึกพิกเซลแนวตั้งสัมพัทธ์ (Perspective Compensation)
+            # ชดเชยพื้นที่ตามตำแหน่งพิกเซลแกน Y และระยะราบแบบอัตโนมัติ
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # ประเมินเกณฑ์ขั้นต่ำเชิงกายภาพจริงอิงตามระดับสายตาใกล้-ไกลบนผืนน้ำ
+            # ตรวจสอบขอบเขตทางกายภาพของพืชลอยน้ำ
             if normalized_y > 0.70:
                 real_area_m2 = max(0.05, real_area_m2 * 0.82)
             else:
                 real_area_m2 = max(0.10, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
-            
-            # บันทึกรายงานสถิติข้อความ
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
+            # วาดมาร์กเกอร์และหมายเลข
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
-            
-            # 🖼️ พ่นเฉพาะ "หมายเลขลำดับกอ" ชัดเจน ไม่รกรุงรังบนภาพตามดีไซน์เดิมของพี่
             cv2.putText(
                 frame,
                 f"{i + 1}",
@@ -173,13 +153,13 @@ analyze = st.button("Upload & Process")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพื้นที่เชิงทัศนียภาพเชิงลึก..."):
+    with st.spinner("ระบบกำลังประมวลผลและชดเชยระยะภาพอัตโนมัติจากอัตราซูม..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        # ส่งผ่านค่าเลเซอร์แปรผัน (laser_dist, laser_angle) เข้าสู่ฟังก์ชันประมวลผลแบบ Dynamic
-        result_frame, texts = detect(frame, focal_length, zoom_factor, laser_dist, laser_angle)
+        # รันฟังก์ชันด้วยสเกลที่แปรผันตามแรงซูมโดยตรงของยูสเซอร์
+        result_frame, texts = detect(frame, focal_length, zoom_factor)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
         st.subheader("📋 ผลการตรวจจับคำนวณพื้นที่")
@@ -198,7 +178,7 @@ if uploaded_file is not None and analyze:
 # ==========================================
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
-    <b>Phak Top Chawa Detector v2.0 (Dynamic Update)</b><br>
-    ระบบตรวจจับและคำนวณพื้นที่ผักตบชวาอ้างอิงระเบียบวิธีวิจัยเชิงตำแหน่งและมุมกล้องแปรผัน
+    <b>Phak Top Chawa Detector v3.0 (User-Friendly Intelligent Mode)</b><br>
+    ระบบคำนวณพื้นที่ผักตบชวาผ่านตัวแปรคาดการณ์เชิงมิติภาพจากระยะซูมเลนส์
 </div>
 """, unsafe_allow_html=True)
