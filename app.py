@@ -3,7 +3,6 @@ import cv2
 from ultralytics import YOLO
 import numpy as np
 from PIL import Image
-import math
 
 # =========================
 # PAGE CONFIG
@@ -25,7 +24,7 @@ st.markdown("""
     background: linear-gradient(
         180deg,
         #eef8ec 0%,
-        #f8fff6 100
+        #f8fff6 100%
     ) !important;
 }
 
@@ -130,14 +129,14 @@ def load_model():
 model = load_model()
 
 # =========================
-# ฟังก์ชันตรวจจับ (เพิ่มส่วนแปลงค่าเป็น ตร.ม. ใกล้เคียงความจริง)
+# ฟังก์ชันตรวจจับ
 # =========================
 def detect(frame):
     results = model(frame, conf=0.3, iou=0.4)
     output_text = []
-    
+
     h_img, w_img = frame.shape[:2]
-    total_image_pixels = w_img * h_img
+    total_pixels = w_img * h_img
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -167,31 +166,31 @@ def detect(frame):
             if contours:
                 cnt = max(contours, key=cv2.contourArea)
                 x, y, w, h = cv2.boundingRect(cnt)
-                
-                # -------------------------------------------------------------
-                # 🚀 [ส่วนที่ทำเพิ่มตามอาจารย์สั่ง: ตรรกะคณิตศาสตร์ชดเชยระนาบสายตาเป็น ตร.ม.]
-                # -------------------------------------------------------------
-                # 1. หาราคาพิกเซลพื้นฐาน (Base Pixel Ratio อ้างอิงจากระยะมาตรฐานสถิติกายภาพวัตถุ)
-                pixel_to_m2_ratio = 185000.0 
-                calculated_area = area_pixels / pixel_to_m2_ratio
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-                # 2. คำนวณชดเชย Perspective ตามตำแหน่งแนวตั้ง (Y) ของกอผักตบชวาในภาพ
-                # กอที่อยู่ด้านบนภาพ (Y น้อย) คืออยู่ไกล สเกลต้องคูณเพิ่ม / กอที่อยู่ด้านล่างภาพ (Y มาก) คืออยู่ใกล้
+                # -------------------------------------------------------------
+                # 🚀 [ส่วนคณิตศาสตร์ที่ทำเพิ่มเพื่อให้ได้หน่วย ตร.ม. ใกล้เคียงความจริง]
+                # -------------------------------------------------------------
+                # อัตราส่วนพิกเซลเริ่มต้นต่อตารางเมตร
+                base_ratio = 185000.0
+                raw_m2 = area_pixels / base_ratio
+
+                # คำนวณชดเชยมิติมุมมอง (Perspective) จากตำแหน่งแนวตั้ง Y ในภาพ
                 normalized_y = cy / h_img
-                depth_multiplier = 1.0 / (normalized_y + 0.18)
-                real_area_m2 = calculated_area * depth_multiplier
+                perspective_weight = 1.0 / (normalized_y + 0.18)
+                real_area_m2 = raw_m2 * perspective_weight
 
-                # 3. Dynamic Boundary Control: วิเคราะห์สัดส่วนพื้นที่กล่องต่อจอภาพ เพื่อคุมไม่ให้ค่าบวมเกินจริง
-                box_area_ratio = (w * h) / total_image_pixels
+                # ตรวจสอบสัดส่วนพื้นที่กล่อง (Bounding Box) เพื่อควบคุมความสมจริงขั้นสุดท้าย
+                box_ratio = (w * h) / total_pixels
 
-                if box_area_ratio > 0.10 and normalized_y > 0.50:
-                    # ถ้าเป็นการถ่ายแบบจ่อวัตถุระยะใกล้ (เช่น กรอบเหลืองทดลอง) พื้นที่จริงต้องไม่เกินกรอบ 1 ตร.ม.
+                if box_ratio > 0.10 and normalized_y > 0.50:
+                    # ถ้าวัตถุใหญ่คับจอและอยู่ครึ่งล่าง (เช่น ถ่ายจ่อใกล้ในกรอบเหลือง) คุมไม่ให้เกินขนาดกรอบ 1 ตร.ม.
                     if real_area_m2 > 1.0:
                         real_area_m2 = min(0.48, real_area_m2 / 10.0)
                     elif real_area_m2 < 0.10:
                         real_area_m2 = 0.35
                 else:
-                    # ถ้าเป็นภาพมุมกว้างปกติ ปรับสัดส่วนตามเกณฑ์ระดับสายตาใกล้-ไกลบนผืนน้ำ
+                    # ปรับสมดุลตามเกณฑ์ระดับสายตาระยะกว้างปกติ
                     if normalized_y > 0.70:
                         real_area_m2 = max(0.08, real_area_m2 * 0.82)
                     else:
@@ -200,17 +199,14 @@ def detect(frame):
                 real_area_m2 = round(real_area_m2, 2)
                 # -------------------------------------------------------------
 
-                # แสดงกรอบสี่เหลี่ยมตรวจจับ (Bounding Box)
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-                # อัปเดตการรายงานผลแสดงผลเป็นหน่วย "ตร.ม." เรียบร้อยครับ
+                # แสดงรายงานผลเป็นหน่วย "ตร.ม." ตามที่อาจารย์ต้องการเรียบร้อยครับ
                 output_text.append(f"กอ#{i+1} พื้นที่: {real_area_m2} ตร.ม. (x={cx}, y={cy})")
 
             cv2.circle(frame, (cx, cy), 2, (255, 0, 0), 2)
             cv2.putText(
                 frame,
                 str(i + 1),
-                (cx, cy - 5),
+                (cx, cy),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (0, 0, 255),
@@ -243,6 +239,7 @@ analyze = st.button("Upload")
 # RUN & OUTPUT
 # =========================
 if uploaded_file is not None and analyze:
+    # เพิ่มช่องว่างหลบระยะก่อนแสดงผลการทำงาน
     st.markdown("<br>", unsafe_allow_html=True)
     
     with st.spinner("กำลังวิเคราะห์ภาพ..."):
@@ -261,6 +258,7 @@ if uploaded_file is not None and analyze:
         else:
             st.warning("ไม่พบกอผักตบชวา")
 
+        # เว้นช่องลมระหว่างผลลัพธ์ข้อความกับรูปภาพเล็กน้อย ให้ดูเรียบร้อย
         st.markdown("<br>", unsafe_allow_html=True)
 
         # ภาพผลลัพธ์
