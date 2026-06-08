@@ -176,6 +176,6 @@ if uploaded_file is not None and analyze:
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
-    ระบบตรวจจับและคำนวณพื้นที่ผักตบชวาเชิงแสงระดับพิกเซล
+    
 </div>
 """, unsafe_allow_html=True)
