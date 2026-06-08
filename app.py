@@ -15,83 +15,20 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (สไตล์สีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # =========================
 st.markdown("""
 <style>
-/* BACKGROUND */
-.stApp { 
-    background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important; 
-}
-
-/* TEXT COLOR */
-.stMarkdown p, .stMarkdown span, .stText, .stSubheader, .stHeader, h1, h2, h3 { 
-    color: #1b5e20 !important; 
-}
-
-/* TITLE BANNER */
-.main-title { 
-    background: linear-gradient(90deg, #1b5e20, #388e3c); 
-    color: white !important; 
-    padding: 24px; 
-    border-radius: 22px; 
-    text-align: center; 
-    font-size: 38px; 
-    font-weight: 700; 
-    margin-bottom: 16px; 
-}
-
-/* SUB TITLE */
-.sub-title { 
-    text-align: center; 
-    color: #1b5e20 !important; 
-    font-size: 18px; 
-    margin-bottom: 35px; 
-    font-weight: 500; 
-}
-
-/* FILE UPLOADER DESIGN (ขอบเขียวประ) */
-[data-testid="stFileUploaderDropzone"] { 
-    background: rgba(255, 255, 255, 0.25) !important; 
-    border: 1px dashed #1b5e20 !important; 
-    border-radius: 18px !important; 
-    padding: 20px !important; 
-}
-
-.stFileUploader * { 
-    color: #1b5e20 !important; 
-}
-
-/* BUTTON DESIGN */
-.stButton button { 
-    width: 100%; 
-    background: linear-gradient(90deg, #1b5e20, #388e3c); 
-    color: white !important; 
-    border: none !important; 
-    border-radius: 16px !important; 
-    padding: 12px 28px !important; 
-    font-size: 18px !important; 
-    font-weight: 700 !important; 
-    transition: 0.3s; 
-    margin-top: 10px; 
-}
-
-.stButton button:hover { 
-    transform: scale(1.02); 
-    background: linear-gradient(90deg, #14461a, #2e7d32); 
-}
-
-/* RESULT IMAGE */
-img { 
-    border-radius: 20px; 
-    margin-top: 10px; 
-}
-
-/* SIDEBAR DESIGN */
-[data-testid="stSidebar"] { 
-    background-color: #f1f9f0 !important; 
-    border-right: 1px solid #c8e6c9 !important; 
-}
+.stApp { background: linear-gradient(180deg, #eef8ec 0%, #f8fff6 100%) !important; }
+.stMarkdown p, .stMarkdown span, .stText, .stSubheader, .stHeader, h1, h2, h3 { color: #1b5e20 !important; }
+.main-title { background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; padding: 24px; border-radius: 22px; text-align: center; font-size: 38px; font-weight: 700; margin-bottom: 16px; }
+.sub-title { text-align: center; color: #1b5e20 !important; font-size: 18px; margin-bottom: 35px; font-weight: 500; }
+[data-testid="stFileUploaderDropzone"] { background: rgba(255, 255, 255, 0.25) !important; border: 1px dashed #1b5e20 !important; border-radius: 18px !important; padding: 20px !important; }
+.stFileUploader * { color: #1b5e20 !important; }
+.stButton button { width: 100%; background: linear-gradient(90deg, #1b5e20, #388e3c); color: white !important; border: none !important; border-radius: 16px !important; padding: 12px 28px !important; font-size: 18px !important; font-weight: 700 !important; transition: 0.3s; margin-top: 10px; }
+.stButton button:hover { transform: scale(1.02); background: linear-gradient(90deg, #14461a, #2e7d32); }
+img { border-radius: 20px; margin-top: 10px; }
+[data-testid="stSidebar"] { background-color: #f1f9f0 !important; border-right: 1px solid #c8e6c9 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -128,23 +65,23 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE DETECTION ENGINE
+# 5. OPTIMIZED DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
-    # 🛠️ [TUNED] ขยับค่า iou เป็น 0.6 เพื่อช่วยให้โมเดลแยกกอที่อยู่ชิดกันออกจากกันได้ดีขึ้นในระยะซูมสูง
-    results = model(frame, conf=0.3, iou=0.6)
+    # 🔥 [OPTIMIZED] ตั้งค่า iou=0.7 เพื่อแยกวัตถุที่อยู่เกยหรือชิดกันในระยะซูม ไม่ให้ยุบรวมกอ
+    results = model(frame, conf=0.25, iou=0.7)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
     
-    # พารามิเตอร์ระนาบมุมกล้องหน้างานจริง
+    # พารามิเตอร์มุมกล้องหน้างานจริง
     d_field = 3.2
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # คำนวณอัตราส่วนการแปลงพิกเซลเป็นตารางเมตรเชิงแสง
+    # ⚙️ [สูตรปรับปรุงใหม่] คำนวณอัตราส่วน pixel ต่อ ตร.ม. แบบ Linear ขจัดปัญหายิ่งซูมยิ่งบวม
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.2)
+    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 2.0)  # ปรับตัวคูณชดเชยแรงขยายภาพเชิงแสงให้คงที่
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -155,8 +92,8 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # คัดกรองพิกเซลขยะขนาดเล็ก
-            if a_pixels < 100:
+            # คัดกรองพิกเซลขนาดเล็กหรือส่วนที่หลุดขอบเฟรมแบบไม่สมบูรณ์ออก
+            if a_pixels < 150:
                 continue
 
             ys, xs = np.where(binary)
@@ -169,34 +106,34 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณความลึก (Perspective) ตามระนาบแกน Y ของภาพถ่าย
+            # คำนวณ Perspective (มิติความลึกใกล้-ไกลของระนาบน้ำ)
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # ถ่วงน้ำหนักเกณฑ์ขั้นต่ำตามระยะความลึก
+            # จัดการขอบเขตขั้นต่ำให้สอดคล้องกับขนาดกายภาพจริงในกรอบอ้างอิง
             if normalized_y > 0.70:
-                real_area_m2 = max(0.12, real_area_m2 * 0.85)
+                real_area_m2 = max(0.08, real_area_m2 * 0.80)
             else:
-                real_area_m2 = max(0.20, real_area_m2)
+                real_area_m2 = max(0.12, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
             
-            # รายงานผลลัพธ์ข้อความในหน่วย ตร.ม.
+            # บันทึกข้อมูลรายงานผลลัพธ์ลงตาราง
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบและจุดกึ่งกลางวัตถุ
+            # วาดกรอบสี่เหลี่ยมและจุดศูนย์กลางเชิงกราฟิก
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # 🖼️ [FONT SIZE UPGRADE] แสดงเฉพาะ "ตัวเลขหมายเลขกอ" ขนาดใหญ่ 1.2 และหนา 3 ชัดเจนเต็มสายตา
+            # 🖼️ [BIG FONT] พ่นเฉพาะตัวเลขลำดับกอเด่น ๆ ขนาดใหญ่พิเศษ (Font 1.5, หนา 3) เพื่อความสะอาดสะอ้าน
             cv2.putText(
                 frame,
                 f"{i + 1}",
-                (x_min, y_min - 12),
+                (x_min, y_min - 15),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1.2,
+                1.5,
                 (0, 0, 255),
                 3
             )
@@ -222,7 +159,6 @@ if uploaded_file is not None and analyze:
         result_frame, texts = detect(frame, focal_length, zoom_factor)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
-        # รายงานผลลัพธ์ข้อความ
         st.subheader("📋 ผลการตรวจจับ")
         if texts:
             for t in texts: 
@@ -231,8 +167,6 @@ if uploaded_file is not None and analyze:
             st.warning("ไม่พบกอผักตบชวาเป้าหมายในภาพถ่ายนี้")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        
-        # แสดงภาพผลลัพธ์
         st.subheader("🖼️ ภาพผลการตรวจจับ")
         st.image(result_rgb, use_container_width=True)
 
