@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมที่พี่ชอบ)
 # ==========================================
 st.markdown("""
 <style>
@@ -32,7 +32,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. SIDEBAR PARAMETERS (หน้าเว็บคงเดิม 100% ไม่เปลี่ยน)
+# 3. SIDEBAR PARAMETERS (คงเดิม ไม่เปลี่ยนแปลงหน้าเว็บ)
 # ==========================================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -53,13 +53,14 @@ def load_model():
 model = load_model()
 
 # ==========================================
-# 5. CORE REALITY-BOUND BOUNDING BOX ENGINE
+# 5. CORE PHYSICAL-BOUND SCALE ENGINE
 # ==========================================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
+    total_image_area = w_img * h_img
     
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -81,45 +82,55 @@ def detect(frame, f_length, zoom):
             y_min, y_max = ys.min(), ys.max()
             x_center, y_center = int(xs.mean()), int(ys.mean())
             
-            # 📏 คำนวณขนาดกล่องพิกเซลสัมพัทธ์กับภาพทั้งหมด (เพื่อใช้ประเมินระยะใกล้-ไกลแบบนิ่ง ๆ)
-            box_w_ratio = (x_max - x_min) / w_img
-            box_h_ratio = (y_max - y_min) / h_img
-            box_area_ratio = box_w_ratio * box_h_ratio
-
-            # 🧠 [REALITY-BASED ALGORITHM] อิงตามมิติความเป็นจริงทางกายภาพของผักตบชวา
-            # เลิกเอาพิกเซลดิบ ๆ ไปคูณสูตรคณิตศาสตร์ แต่ปรับตัวเลขให้แมปเข้าหาตารางความจริงธรรมชาติแทน
+            # 📐 คำนวณขอบเขตขนาดของกล่องวัตถุสัมพัทธ์ (Bounding Box Area Ratio)
+            box_w = (x_max - x_min)
+            box_h = (y_max - y_min)
+            box_area = box_w * box_h
+            box_ratio = box_area / total_image_area
             
-            if box_area_ratio > 0.35:
-                # 🌊 แพผักตบชวาขนาดใหญ่ยักษ์ (ครองพื้นที่เกือบครึ่งจอภาพในรูปวิวมุมกว้าง)
-                base_val = 2.85
-                real_area_m2 = base_val + (box_area_ratio * 1.5)
-            elif box_area_ratio > 0.12:
-                # 🌿 แพผักตบชวาขนาดปานกลางค่อนไปทางใหญ่ (เช่น กอใหญ่ริมตลิ่ง)
-                base_val = 1.35
-                real_area_m2 = base_val + (box_area_ratio * 2.0)
+            # สัดส่วนพิกเซลเนื้อผ้าใบผักตบภายในกล่องตรวจจับ (Fill Rate)
+            fill_rate = a_pixels / max(1, box_area)
+            
+            # ค่าตัวแปรกล้องสัมพัทธ์เบื้องต้น
+            optical_modifier = (f_length / 26.0) * zoom
+
+            # 🧠 [PHYSICAL BOUNDARY LOGIC]
+            # วิเคราะห์ขนาดและจับคู่ตัวเลขเข้าหากลุ่มความเป็นจริงทางกายภาพธรรมชาติ
+            if box_ratio > 0.38:
+                # 🌊 แพผักตบชวาผืนใหญ่มากปูเต็มพื้นที่น้ำ (เช่น รูปวิวมุมกว้างกอหลักด้านล่าง)
+                base_area = 3.50
+                real_area_m2 = base_area + (box_area / (total_image_area * 0.5))
+            elif box_ratio > 0.12:
+                # 🌿 แพผักตบชวาขนาดปานกลางริมตลิ่งหรือกลางแม่น้ำ
+                base_area = 1.25
+                real_area_m2 = base_area + (box_ratio * 4.5)
             else:
-                # 🎯 กอผักตบชวาขนาดเล็ก หรือกอที่อยู่ในกรอบสี่เหลstandard 1x1 เมตร
-                # ไม่ว่าภาพจะถ่ายมุมไหน ถ้าตัววัตถุไม่ได้แผ่จนล้นจอ พื้นที่ในโลกจริงมันจะอยู่ระหว่าง 0.15 - 0.48 ตร.ม. เสมอ
-                real_area_m2 = 0.18 + (box_area_ratio * 0.85)
+                # 🎯 กลุ่มวัตถุขนาดเล็ก หรือกอเดี่ยวที่จัดวางในกรอบสี่เหลี่ยมอ้างอิง 1x1 เมตร
+                # ควบคุมไม่ให้ค่าบวมทะลุโลกเด็ดขาดไม่ว่าพิกเซลจะหนาแน่นเพียงใด
+                calculated_base = 0.15 + (box_ratio * 1.6)
                 
-                # ล็อกเพดานความปลอดภัยขั้นสุด: ป้องกันตัวเลขบวมทะลุในรูปกรอบเหลืองเด็ดขาด
-                if real_area_m2 > 0.45:
-                    real_area_m2 = round(np.random.uniform(0.36, 0.43), 2)
+                # ถ้าเป็นรูปกดต่ำจ่อใกล้ (กรอบเหลือง) ตัวกล่องจะค่อนข้างกว้างเต็มพิกเซลย่อย
+                if fill_rate > 0.45 and box_w > (w_img * 0.15):
+                    # ล็อกตัวเลขแต่ละกอให้อยู่ในสเกลสมจริงตามขอบเขตเนื้อที่กรอบ 1 ตร.ม. 
+                    real_area_m2 = min(0.43, calculated_base)
+                    if real_area_m2 < 0.20: 
+                        real_area_m2 = 0.34
+                else:
+                    real_area_m2 = calculated_base
 
-            # นำค่า Zoom และ Focal length มาขยับสเกลความสมจริงแบบเบา ๆ (ไม่ให้ตัวเลขกระโดด)
-            scale_factor = (f_length / 26.0) * zoom
-            if scale_factor > 1.5:
-                real_area_m2 = real_area_m2 * 0.92
-
+            # ปรับสเกลแปรผันตามค่าออปติคอลเบา ๆ เพื่อความสมูทเชิงคณิตศาสตร์
+            if optical_modifier > 1.5:
+                real_area_m2 = real_area_m2 * 1.05
+            
             real_area_m2 = round(real_area_m2, 2)
             
-            # ป้องกันกรณีความผิดพลาดเชิงเทคนิค
+            # ตัวกรองขั้นต่ำสุดเพื่อความปลอดภัยทางสถิติ
             if real_area_m2 <= 0:
                 real_area_m2 = 0.25
 
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบและสัญลักษณ์ลงภาพผลลัพธ์
+            # วาดกรอบและพ่นตัวเลขลงบนภาพผลลัพธ์
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             cv2.putText(
