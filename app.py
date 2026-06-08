@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN
 # =========================
 st.markdown("""
 <style>
@@ -66,8 +66,8 @@ model = load_model()
 # 5. MATHEMATICAL DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
-    # ปรับ iou เป็น 0.50 เพื่อให้ทำงานร่วมกับภาพสภาพแวดล้อมอื่น ๆ ได้อย่างเสถียร ไม่หลุดขอบเขต
-    results = model(frame, conf=0.24, iou=0.50)
+    # ปรับค่า NMS iou กลับมาที่มาตรฐาน 0.45 เพื่อให้แยกวัตถุตามสัดส่วนภาพจริง ไม่บังคับผ่ากอจนเพี้ยน
+    results = model(frame, conf=0.24, iou=0.45)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
@@ -76,62 +76,54 @@ def detect(frame, f_length, zoom):
         masks = results[0].masks.data.cpu().numpy()
         boxes = results[0].boxes.data.cpu().numpy()
 
-        valid_masks = []
-        valid_boxes = []
+        for i, (mask, box) in enumerate(zip(masks, boxes)):
+            mask = cv2.resize(mask, (w_img, h_img))
+            binary = (mask > 0.5)
+            a_pixels = int(binary.sum())
 
-        # สแกนกรองเอาเฉพาะวัตถุที่มีความสมบูรณ์เชิงพิกเซล
-        for mask, box in zip(masks, boxes):
-            resized_mask = cv2.resize(mask, (w_img, h_img))
-            binary_mask = (resized_mask > 0.5)
-            a_pixels = int(binary_mask.sum())
-            
-            if a_pixels >= 150:
-                valid_masks.append((binary_mask, a_pixels))
-                valid_boxes.append(box)
+            # กรองเศษพิกเซลสัญญาณรบกวนขนาดเล็กมาก
+            if a_pixels < 100:
+                continue
 
-        if not valid_masks:
-            return frame, output_text
+            ys, xs = np.where(binary)
+            if len(xs) == 0 or len(ys) == 0:
+                continue
 
-        # 📐 [DYNAMIC SCALE CURVE] คำนวณหาตัวหารพิกเซลที่ยืดหยุ่นสัมพันธ์ตามระดับการซูมจริง
-        # โดยอ้างอิงจากฐานพิกเซลกลางของเลนส์ เพื่อไม่ให้ภาพมุมกว้างหรือภาพแคบเกิดการเอ๋อ
-        base_ratio = 420000.0 if zoom <= 1.2 else 210000.0
-        optical_modifier = math.pow((f_length / 26.0) * zoom, 1.85)
-        pixel_to_m2_ratio = base_ratio * optical_modifier
-
-        for i, ((binary_mask, a_pixels), box) in enumerate(zip(valid_masks, valid_boxes)):
-            ys, xs = np.where(binary_mask)
             x_min, x_max = xs.min(), xs.max()
             y_min, y_max = ys.min(), ys.max()
             
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณหาค่าพื้นที่ดิบตามความหนาแน่นพิกเซลที่เลนส์กล้องบันทึกได้
+            # 📐 [NEW CALIBRATION] ปรับสมการสเกลเชิงแสงใหม่ให้เสถียรตามหลักทัศนศาสตร์สากล
+            # ลบการบังคับหารทิ้งทั้งหมด ปล่อยให้ตัวเลขแปรผันตามจำนวนพิกเซลจริงของภาพ
+            optical_scale = (f_length / 26.0) * zoom
+            pixel_to_m2_ratio = 310000.0 * math.pow(optical_scale, 2.0)
+            
             raw_area = a_pixels / pixel_to_m2_ratio
             
-            # 🌊 [PERSPECTIVE SMOOTHING] ใช้ตัวชดเชยมิติภาพตามความสูงแกน Y แบบต่อเนื่อง
-            # ป้องกันไม่ให้เกิดการตัดขอบตัวเลขแบบกระโดดข้ามขั้น
-            y_ratio = y_center / h_img
-            depth_factor = 0.55 + (y_ratio * 0.65)
-            real_area_m2 = raw_area * depth_factor
+            # คำนวณชดเชยมิติมุมเอียงของกล้อง (Perspective) จากตำแหน่งแนวตั้ง Y
+            normalized_y = y_center / h_img
+            depth_multiplier = 0.65 + (normalized_y * 0.55)
+            real_area_m2 = raw_area * depth_multiplier
 
-            # ตรวจสอบจุดสัมผัสขอบจอภาพเพื่อคัดกรองสัญญาณรบกวนริมตลิ่ง
-            is_touching_edge = (x_min <= 8 or x_max >= w_img - 8 or y_min <= 8 or y_max >= h_img - 8)
-            if is_touching_edge and zoom <= 1.2:
-                real_area_m2 = min(real_area_m2, 0.35)
+            # ป้องกันขอบภาพบวมในกรณีมุมกว้างหลุดเฟรม
+            is_touching_edge = (x_min <= 4 or x_max >= w_img - 4 or y_min <= 4 or y_max >= h_img - 4)
+            if is_touching_edge and zoom <= 1.1:
+                real_area_m2 = real_area_m2 * 0.85
 
-            # กำหนดขอบเขตขั้นต่ำและขั้นสูงสุดทางกายภาพของวัตถุใบผักตบชวา
-            real_area_m2 = max(0.05, min(real_area_m2, 2.50))
+            # ขีดจำกัดขั้นต่ำตามกายภาพใบผักตบชวา
+            real_area_m2 = max(0.02, real_area_m2)
             real_area_m2 = round(real_area_m2, 2)
             
-            # รายงานสถิติตัวเลขเข้าสู่ระบบ
+            # บันทึกข้อมูลรายงาน
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดสัญลักษณ์ Bounding Box และจุดศูนย์กลางวัตถุ
+            # วาดสี่เหลี่ยมควบคุม
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # แสดงเฉพาะตัวเลขลำดับกอขนาดใหญ่พิเศษ ชัดเจน สะอาดตา ไม่บังเนื้อวัตถุ
+            # พ่นเฉพาะตัวเลขลำดับกอขนาดใหญ่สีแดงเพื่อความคลีนของภาพตามบรีฟ
             cv2.putText(
                 frame,
                 f"{i + 1}",
@@ -155,7 +147,7 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพื้นที่ตามสเกลทัศนศาสตร์จริง..."):
+    with st.spinner("ระบบกำลังคำนวณพื้นที่ตามสัดส่วนภาพจริง..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -179,7 +171,7 @@ if uploaded_file is not None and analyze:
 # =========================
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
-    <b>Phak Top Chawa Detector (Dynamic Scale Edition)</b><br>
-    ระบบตรวจจับคำนวณพื้นที่ผิวผักตบชวารองรับโครงสร้างภาพหลายมิติ
+    <b>Phak Top Chawa Detector (Pure Perspective Edition)</b><br>
+    ระบบคำนวณพื้นที่ผิวผักตบชวาตามสเกลคณิตศาสตร์รูปภาพจริง
 </div>
 """, unsafe_allow_html=True)
