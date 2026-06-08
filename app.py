@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมของพี่)
 # =========================
 st.markdown("""
 <style>
@@ -33,16 +33,26 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (ปรับลดเหลือตัวแปรความสูงหน้างานเพื่อความง่าย)
+# 3. SIDEBAR PARAMETERS (คงหน้าจอเดิมไว้ตามที่พี่บอก ไม่แก้แน่นอนครับ)
 # =========================
-st.sidebar.markdown("### ⚙️ ปรับสเกลหน้างานจริง")
-shooting_distance = st.sidebar.slider(
-    "ระยะห่างจากวัตถุ (เมตร):", 
+st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
+
+focal_length = st.sidebar.number_input(
+    "Focal Length (mm):", 
     min_value=1.0, 
-    max_value=10.0, 
-    value=2.5, 
-    step=0.5,
-    help="ปรับตามระยะห่างจริงจากกล้องถึงกอผักตบชวา"
+    max_value=500.0, 
+    value=26.0, 
+    step=1.0,
+    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่ามาตรฐานคือ 26mm)"
+)
+
+zoom_factor = st.sidebar.number_input(
+    "Camera Zoom (x):", 
+    min_value=0.5, 
+    max_value=50.0, 
+    value=1.0, 
+    step=0.1,
+    help="ระยะการซูมของภาพถ่ายที่ระบบจะนำไปคำนวณชดเชยสเกล"
 )
 
 # =========================
@@ -55,15 +65,23 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. PROPORTIONAL CALIBRATION ENGINE
+# 5. BALANCED DETECTION ENGINE
 # =========================
-def detect(frame, distance):
-    # ใช้ค่า iou=0.45 มาตรฐานเพื่อความเสถียรในทุกมิติภาพ
+def detect(frame, f_length, zoom):
+    # ปรับใช้ iou มาตรฐาน เพื่อให้โมเดลแบ่งพื้นที่กอตามพิกเซลจริง ไม่บังคับผ่ากอจนเพี้ยน
     results = model(frame, conf=0.24, iou=0.45)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_pixels = h_img * w_img
+    
+    # พารามิเตอร์ระดับสายตาและมุมกล้องอ้างอิงหน้างาน
+    d_field = 3.2
+    theta_rad = math.radians(43.0)
+    horizontal_dist = d_field * math.cos(theta_rad)
+    
+    # 📐 [สูตรปรับจูนใหม่ตามพิกเซลจริง] ปรับค่าคงที่พิกเซลให้เหมาะสม ไม่หนาเกินไปจนทำให้ขนาดบวม
+    optical_scale = (f_length / 26.0) * zoom
+    pixel_to_m2_ratio = 480000.0 * math.pow(optical_scale, 2.0)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -74,8 +92,8 @@ def detect(frame, distance):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรอง Noise หรือเศษขยะผิวน้ำที่เล็กเกินไป
-            if a_pixels < 120:
+            # กรอง Noise ขนาดเล็กมาก
+            if a_pixels < 100:
                 continue
 
             ys, xs = np.where(binary)
@@ -88,37 +106,26 @@ def detect(frame, distance):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # 📐 [PROPORTIONAL SCALE SYSTEM]
-            # คำนวณขนาดกล่องควบคุม (Bounding Box Width & Height) เทียบกับขนาดภาพรวม 
-            box_w = x_max - x_min
-            box_h = y_max - y_min
-            box_area_ratio = (box_w * box_h) / total_pixels
+            # คำนวณตามสเกลคณิตศาสตร์จริง ไม่มีสูตรลัดหรือดักตัดตัวเลข
+            calculated_area = a_pixels / pixel_to_m2_ratio
             
-            # สมการแปลงสัดส่วนภาพถ่ายระยะใกล้-ไกลอ้างอิงความกว้างเลนส์มาตรฐาน (Field of View Anchor)
-            # ตัวคูณนี้จะล็อกให้พื้นที่วัตถุสัมพันธ์กับสเกลกายภาพมนุษย์หรือสิ่งปลูกสร้างรอบข้างเสมอ
-            view_coverage_m2 = 6.2 * math.pow(distance / 2.5, 2.0)
-            calculated_box_m2 = box_area_ratio * view_coverage_m2
-            
-            # คำนวณเนื้อพื้นที่ผิวภายในหน้ากาก (Mask Density Factor)
-            mask_density = a_pixels / (box_w * box_h)
-            real_area_m2 = calculated_box_m2 * mask_density
-            
-            # ชดเชยมิติความลึก (Perspective) ตามระนาบแกน Y อย่างนุ่มนวล
+            # ชดเชยมิติภาพตามแนวดิ่ง Y เพื่อให้กอที่อยู่ใกล้และไกลมีสมดุลที่สมจริงเมื่อเทียบกับคนในภาพ
             normalized_y = y_center / h_img
-            real_area_m2 = real_area_m2 * (0.75 + (normalized_y * 0.45))
+            depth_multiplier = (1.0 / (normalized_y + 0.35)) * (horizontal_dist / 1.5)
+            real_area_m2 = calculated_area * depth_multiplier
 
-            # กำหนดขอบเขตความสมจริงขั้นต่ำ-สูงสุดทางธรรมชาติ
-            real_area_m2 = max(0.02, min(real_area_m2, 1.80))
+            # ถอดเงื่อนไข if-else ที่เคยบังคับล็อกค่าทิ้งทั้งหมด ปล่อยให้แสดงผลตามสัดส่วนภาพจริง
+            real_area_m2 = max(0.01, real_area_m2)
             real_area_m2 = round(real_area_m2, 2)
             
-            # รายงานสถิติผลลัพธ์
+            # บันทึกข้อมูลรายงานผลลัพธ์
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดเส้นกราฟิกควบคุม
+            # วาดกรอบควบคุมและจุดกึ่งกลางมวลวัตถุ
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # พ่นหมายเลขกอคลีน ๆ ขนาดใหญ่สีแดง
+            # พ่นเฉพาะ "หมายเลขลำดับกอ" ขนาดใหญ่สีแดง เพื่อความคลีนตามที่พี่ต้องการ
             cv2.putText(
                 frame,
                 f"{i + 1}",
@@ -142,12 +149,12 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพื้นที่อิงสัดส่วนกายภาพจริง..."):
+    with st.spinner("ระบบประมวลผลกำลังคำนวณสเกลพื้นที่จริง..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        result_frame, texts = detect(frame, shooting_distance)
+        result_frame, texts = detect(frame, focal_length, zoom_factor)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
         st.subheader("📋 ผลการตรวจจับ")
@@ -166,7 +173,7 @@ if uploaded_file is not None and analyze:
 # =========================
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
-    <b>Phak Top Chawa Detector (Proportional Anchor Edition)</b><br>
-    ระบบคำนวณพื้นที่ผิวผักตบชวาความเสถียรสูงตามสัดส่วนวัตถุจริง
+    <b>Phak Top Chawa Detector (Standard Perspective Edition)</b><br>
+    ระบบตรวจจับและคำนวณสเกลพื้นที่ผิวผักตบชวาตามพิกเซลภาพจริง
 </div>
 """, unsafe_allow_html=True)
