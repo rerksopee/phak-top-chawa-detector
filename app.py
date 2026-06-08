@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมของพี่)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมของพี่ร้อยเปอร์เซ็นต์)
 # =========================
 st.markdown("""
 <style>
@@ -33,7 +33,7 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS (คงเดิมเป๊ะ ไม่แก้หน้าเว็บ)
+# 3. SIDEBAR PARAMETERS (หน้าเว็บเดิมของพี่ ไม่แก้ไขโครงสร้างเด็ดขาด)
 # =========================
 st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
@@ -65,17 +65,20 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE ROBUST DETECTION ENGINE (ปรับสูตรคณิตศาสตร์หลังบ้านให้สมจริง)
+# 5. CORE ROBUST DETECTION ENGINE (ตัวปรับปรุงระบบคำนวณใหม่หมด)
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_pixels = h_img * w_img
     
-    # คำนวณอัตราส่วนการขยายของเลนส์กล้องตามจริง
+    # คำนวณอัตราส่วนการขยายแบบแปรผันตรงตรงไปตรงมา
     optical_scale = (f_length / 26.0) * zoom
+    
+    # 📐 [PURE PIXEL MAPPING] บาลานซ์ตัวหารพิกเซลใหม่ให้สอดคล้องกับขนาดจริงในธรรมชาติ
+    # ตัดสมการซับซ้อนที่ทำให้สเกลบวมออกทั้งหมด 
+    pixel_to_m2_ratio = 1150000.0 * optical_scale
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -86,6 +89,7 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
+            # กรองเศษพิกเซลขยะขนาดเล็ก
             if a_pixels < 120:
                 continue
 
@@ -99,35 +103,25 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # 📐 [NEW PROPORTIONAL CALIBRATION] 
-            # ลบสูตรหารลึกเดิมที่ทำให้ค่าดีดทิ้ง เปลี่ยนมาใช้สัดส่วนพื้นที่วัตถุจริงบนเฟรมภาพ (Pixel-to-Screen Ratio)
-            box_w = x_max - x_min
-            box_h = y_max - y_min
-            box_area = box_w * box_h
+            # คำนวณแบบตรงไปตรงมาตามสัดส่วนเนื้อผ้าพิกเซลจริง
+            real_area_m2 = a_pixels / pixel_to_m2_ratio
             
-            # หาค่าความหนาแน่นภายในกล่องวัตถุเพื่อคัดกรองเนื้อผักตบชวา
-            density_factor = a_pixels / box_area
-            
-            # คำนวณพื้นที่อิงตามสเกลแสงผ่านพื้นที่หน้าจอจริง (ล็อกขนาดสัมพัทธ์เทียบสเกลคนและสิ่งแวดล้อม)
-            screen_ratio = box_area / total_pixels
-            real_area_m2 = (screen_ratio * 4.65) * density_factor / math.pow(optical_scale, 1.5)
-            
-            # ปรับปรุงการชดเชยระนาบเอียง Y เล็กน้อยแบบสมดุล ไม่ให้ค่าดีดตัวเป็นทวีคูณ
+            # ชดเชยมิติมุมมองลาดเอียงแบบเสถียร (สัดส่วนค่อย ๆ เพิ่มตามความลึกอย่างสมเหตุสมผล)
             normalized_y = y_center / h_img
-            real_area_m2 = real_area_m2 * (0.85 + (normalized_y * 0.35))
+            real_area_m2 = real_area_m2 * (0.6 + (normalized_y * 0.8))
 
-            # ล็อกขอบเขตความสมจริงเชิงสถิติตามธรรมชาติของกอผักตบชวาหน้างาน
-            real_area_m2 = max(0.02, min(real_area_m2, 0.45))
+            # ล็อกเกณฑ์ค่าสูงสุด-ต่ำสุดตามความจริง (กอเดี่ยวไม่มีทางใหญ่เกินขนาดพิกเซลจริงที่เป็นไปได้)
+            real_area_m2 = max(0.02, min(real_area_m2, 0.60))
             real_area_m2 = round(real_area_m2, 2)
             
-            # บันทึกรายงานสถิติข้อความ
+            # บันทึกรายงานข้อความ
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
+            # วาดสี่เหลี่ยมควบคุม
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # พ่นเฉพาะ "หมายเลขลำดับกอ" ขนาดใหญ่ 1.3 ความหนา 3 ชัดเจน คลีนๆ ตามบรีฟพี่
+            # พ่นเฉพาะหมายเลขกอขนาดใหญ่สีแดง คลีน ๆ ไม่รกรุงรัง
             cv2.putText(
                 frame,
                 f"{i + 1}",
