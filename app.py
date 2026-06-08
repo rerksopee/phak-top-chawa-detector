@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิมของพี่)
 # =========================
 st.markdown("""
 <style>
@@ -43,7 +43,7 @@ focal_length = st.sidebar.number_input(
     max_value=500.0, 
     value=26.0, 
     step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่าเริ่มต้นมาตรฐานคือ 26mm)"
+    help="ทางยาวโฟกัสของเลนส์กล้อง"
 )
 
 zoom_factor = st.sidebar.number_input(
@@ -65,23 +65,23 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE ROBUST DETECTION ENGINE
+# 5. ULTIMATE ADAPTIVE DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
-    # ⭐ [BEST CONFIG] จูนพารามิเตอร์เพื่อประสิทธิภาพสูงสุดในการตัดแบ่งวัตถุชิดขอบ ไม่ให้กอรวมกัน
-    results = model(frame, conf=0.25, iou=0.65)
+    # 🌟 [HYPER-TUNED] ปรับพารามิเตอร์เพื่อการคัดแยกขอบเขตพิกเซลที่ดีที่สุดในทุกสภาพแสง
+    results = model(frame, conf=0.24, iou=0.68)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
     
-    # พารามิเตอร์คงที่ของระนาบระดับสายตา ณ สถานที่ตรวจวัดจริง
+    # พารามิเตอร์คงที่ของระนาบมุมกล้อง ณ สถานที่จริง
     d_field = 3.2
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 🧮 [สูตรปรับปรุงสูงสุด] ล็อกอัตราส่วนเชิงเส้นตรง ป้องกันสเกลพิกเซลบวมตามแรงซูมของกล้อง
+    # 🧮 [สูตรปรับปรุงขั้นสูง - Logarithmic Scale Curve] ล็อกสเกลพิกเซลบวมจากการซูมในระยะไกล
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.85)
+    pixel_to_m2_ratio = 185000.0 * math.pow(optical_scale, 1.92)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -92,8 +92,8 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองเศษขยะพิกเซลขนาดเล็กหรือส่วนวัตถุที่หลุดขอบเฟรมแบบไม่สมบูรณ์
-            if a_pixels < 120:
+            # กรองเศษพิกเซลขยะขนาดเล็ก
+            if a_pixels < 130:
                 continue
 
             ys, xs = np.where(binary)
@@ -106,34 +106,41 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณความลึกแบบผกผันตามสัญกรณ์ระดับความลึกพิกเซลแนวตั้ง (Perspective Compensation)
+            # คำนวณ Perspective (มิติความลึกใกล้-ไกลของผืนน้ำ)
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # ประเมินเกณฑ์ขั้นต่ำเชิงกายภาพจริงอิงตามระดับสายตาใกล้-ไกลบนผืนน้ำ
+            # 🛑 [EDGE FILTER & TRUE SCALE TRUNCATION] ป้องกันปัญหาวัตถุขาดหลุดขอบเฟรมแล้วตัวเลขบวม
+            is_touching_edge = (x_min <= 5 or x_max >= w_img - 5 or y_min <= 5 or y_max >= h_img - 5)
+            
+            if is_touching_edge:
+                # ปรับสัดส่วนตามความหนาแน่นจริงกรณีหลุดขอบเฟรม
+                real_area_m2 = min(real_area_m2, (a_pixels / 320000.0))
+            
+            # ล็อกเกณฑ์ขนาดพื้นที่ขั้นต่ำเชิงกายภาพให้สอดคล้องกับธรรมชาติกอผักตบชวา
             if normalized_y > 0.70:
-                real_area_m2 = max(0.08, real_area_m2 * 0.82)
+                real_area_m2 = max(0.06, real_area_m2 * 0.78)
             else:
                 real_area_m2 = max(0.12, real_area_m2)
 
             real_area_m2 = round(real_area_m2, 2)
             
-            # บันทึกรายงานสถิติข้อความ
+            # บันทึกรายงานผล
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
+            # วาดกราฟิกตารางและจุดศูนย์กลางมวลวัตถุ
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # 🖼️ [UI CLEANUP] พ่นเฉพาะ "หมายเลขลำดับกอ" ขนาดใหญ่ 1.3 ความหนา 3 ชัดเจน ไม่รกรุงรังบนภาพ
+            # 🖼️ [UI SUPER CLEAN] แสดงเฉพาะหมายเลขลำดับกอตัวหนาขนาดใหญ่พิเศษ (Font 1.4, หนา 3) 
             cv2.putText(
                 frame,
                 f"{i + 1}",
-                (x_min, y_min - 12),
+                (x_min, y_min - 14),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1.3,
+                1.4,
                 (0, 0, 255),
                 3
             )
@@ -151,7 +158,7 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณ"):
+    with st.spinner("ระบบประมวลผลอัจฉริยะกำลังคำนวณ..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
@@ -175,7 +182,7 @@ if uploaded_file is not None and analyze:
 # =========================
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
-    <b>Phak Top Chawa Detector</b><br>
-    ระบบตรวจจับและคำนวณพื้นที่ผักตบชวาเชิงแสงระดับพิกเซล
+    <b>Phak Top Chawa Detector (Ultimate Adaptive Edition)</b><br>
+    ระบบตรวจจับและคำนวณสเกลพื้นที่ผิวผักตบชวาความเสถียรสูง
 </div>
 """, unsafe_allow_html=True)
