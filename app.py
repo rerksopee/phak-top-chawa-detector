@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # =========================
 st.markdown("""
 <style>
@@ -33,24 +33,16 @@ img { border-radius: 20px; margin-top: 10px; }
 """, unsafe_allow_html=True)
 
 # =========================
-# 3. SIDEBAR PARAMETERS
+# 3. SIDEBAR PARAMETERS (ปรับลดเหลือตัวแปรความสูงหน้างานเพื่อความง่าย)
 # =========================
-st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
-
-focal_length = st.sidebar.number_input(
-    "Focal Length (mm):", 
+st.sidebar.markdown("### ⚙️ ปรับสเกลหน้างานจริง")
+shooting_distance = st.sidebar.slider(
+    "ระยะห่างจากวัตถุ (เมตร):", 
     min_value=1.0, 
-    max_value=500.0, 
-    value=26.0, 
-    step=1.0
-)
-
-zoom_factor = st.sidebar.number_input(
-    "Camera Zoom (x):", 
-    min_value=0.5, 
-    max_value=50.0, 
-    value=1.0, 
-    step=0.1
+    max_value=10.0, 
+    value=2.5, 
+    step=0.5,
+    help="ปรับตามระยะห่างจริงจากกล้องถึงกอผักตบชวา"
 )
 
 # =========================
@@ -63,14 +55,15 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. MATHEMATICAL DETECTION ENGINE
+# 5. PROPORTIONAL CALIBRATION ENGINE
 # =========================
-def detect(frame, f_length, zoom):
-    # ปรับค่า NMS iou กลับมาที่มาตรฐาน 0.45 เพื่อให้แยกวัตถุตามสัดส่วนภาพจริง ไม่บังคับผ่ากอจนเพี้ยน
+def detect(frame, distance):
+    # ใช้ค่า iou=0.45 มาตรฐานเพื่อความเสถียรในทุกมิติภาพ
     results = model(frame, conf=0.24, iou=0.45)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
+    total_pixels = h_img * w_img
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -81,8 +74,8 @@ def detect(frame, f_length, zoom):
             binary = (mask > 0.5)
             a_pixels = int(binary.sum())
 
-            # กรองเศษพิกเซลสัญญาณรบกวนขนาดเล็กมาก
-            if a_pixels < 100:
+            # กรอง Noise หรือเศษขยะผิวน้ำที่เล็กเกินไป
+            if a_pixels < 120:
                 continue
 
             ys, xs = np.where(binary)
@@ -95,35 +88,37 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # 📐 [NEW CALIBRATION] ปรับสมการสเกลเชิงแสงใหม่ให้เสถียรตามหลักทัศนศาสตร์สากล
-            # ลบการบังคับหารทิ้งทั้งหมด ปล่อยให้ตัวเลขแปรผันตามจำนวนพิกเซลจริงของภาพ
-            optical_scale = (f_length / 26.0) * zoom
-            pixel_to_m2_ratio = 310000.0 * math.pow(optical_scale, 2.0)
+            # 📐 [PROPORTIONAL SCALE SYSTEM]
+            # คำนวณขนาดกล่องควบคุม (Bounding Box Width & Height) เทียบกับขนาดภาพรวม 
+            box_w = x_max - x_min
+            box_h = y_max - y_min
+            box_area_ratio = (box_w * box_h) / total_pixels
             
-            raw_area = a_pixels / pixel_to_m2_ratio
+            # สมการแปลงสัดส่วนภาพถ่ายระยะใกล้-ไกลอ้างอิงความกว้างเลนส์มาตรฐาน (Field of View Anchor)
+            # ตัวคูณนี้จะล็อกให้พื้นที่วัตถุสัมพันธ์กับสเกลกายภาพมนุษย์หรือสิ่งปลูกสร้างรอบข้างเสมอ
+            view_coverage_m2 = 6.2 * math.pow(distance / 2.5, 2.0)
+            calculated_box_m2 = box_area_ratio * view_coverage_m2
             
-            # คำนวณชดเชยมิติมุมเอียงของกล้อง (Perspective) จากตำแหน่งแนวตั้ง Y
+            # คำนวณเนื้อพื้นที่ผิวภายในหน้ากาก (Mask Density Factor)
+            mask_density = a_pixels / (box_w * box_h)
+            real_area_m2 = calculated_box_m2 * mask_density
+            
+            # ชดเชยมิติความลึก (Perspective) ตามระนาบแกน Y อย่างนุ่มนวล
             normalized_y = y_center / h_img
-            depth_multiplier = 0.65 + (normalized_y * 0.55)
-            real_area_m2 = raw_area * depth_multiplier
+            real_area_m2 = real_area_m2 * (0.75 + (normalized_y * 0.45))
 
-            # ป้องกันขอบภาพบวมในกรณีมุมกว้างหลุดเฟรม
-            is_touching_edge = (x_min <= 4 or x_max >= w_img - 4 or y_min <= 4 or y_max >= h_img - 4)
-            if is_touching_edge and zoom <= 1.1:
-                real_area_m2 = real_area_m2 * 0.85
-
-            # ขีดจำกัดขั้นต่ำตามกายภาพใบผักตบชวา
-            real_area_m2 = max(0.02, real_area_m2)
+            # กำหนดขอบเขตความสมจริงขั้นต่ำ-สูงสุดทางธรรมชาติ
+            real_area_m2 = max(0.02, min(real_area_m2, 1.80))
             real_area_m2 = round(real_area_m2, 2)
             
-            # บันทึกข้อมูลรายงาน
+            # รายงานสถิติผลลัพธ์
             output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดสี่เหลี่ยมควบคุม
+            # วาดเส้นกราฟิกควบคุม
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # พ่นเฉพาะตัวเลขลำดับกอขนาดใหญ่สีแดงเพื่อความคลีนของภาพตามบรีฟ
+            # พ่นหมายเลขกอคลีน ๆ ขนาดใหญ่สีแดง
             cv2.putText(
                 frame,
                 f"{i + 1}",
@@ -147,12 +142,12 @@ analyze = st.button("Upload")
 
 if uploaded_file is not None and analyze:
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.spinner("ระบบกำลังคำนวณพื้นที่ตามสัดส่วนภาพจริง..."):
+    with st.spinner("ระบบกำลังคำนวณพื้นที่อิงสัดส่วนกายภาพจริง..."):
         image = Image.open(uploaded_file).convert("RGB")
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        result_frame, texts = detect(frame, focal_length, zoom_factor)
+        result_frame, texts = detect(frame, shooting_distance)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
         st.subheader("📋 ผลการตรวจจับ")
@@ -171,7 +166,7 @@ if uploaded_file is not None and analyze:
 # =========================
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
-    <b>Phak Top Chawa Detector (Pure Perspective Edition)</b><br>
-    ระบบคำนวณพื้นที่ผิวผักตบชวาตามสเกลคณิตศาสตร์รูปภาพจริง
+    <b>Phak Top Chawa Detector (Proportional Anchor Edition)</b><br>
+    ระบบคำนวณพื้นที่ผิวผักตบชวาความเสถียรสูงตามสัดส่วนวัตถุจริง
 </div>
 """, unsafe_allow_html=True)
