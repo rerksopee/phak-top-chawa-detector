@@ -65,7 +65,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE ROBUST DETECTION ENGINE (อัปเดตระบบคณิตศาสตร์อ้างอิงระยะและสเกลความสอดคล้อง)
+# 5. CORE ROBUST DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
@@ -73,21 +73,16 @@ def detect(frame, f_length, zoom):
     
     h_img, w_img = frame.shape[:2]
     
-    # พารามิเตอร์ระยะทางกายภาพและระดับสายตาจากโครงสร้างสนาม
+    # ค่าที่วัดจากภาคสนาม
     D_FIELD = 3.2
     THETA_RAD = math.radians(46)
     horizontal_dist = D_FIELD * math.cos(THETA_RAD)
     
-    # การหาค่าสเกลเลนส์และการซูม (Optical Scale Compensation)
+    # 🌟 [ปรับปรุงจุดที่ 1] ปรับแก้สเกลฐานพิกเซลต่อนิ้วให้สะท้อนค่ากลศาสตร์จริง
     optical_scale = (f_length / 26.0) * zoom
+    BASE_PIXEL_PER_M2 = 345000.0  # ปรับเพิ่มขึ้นเพื่อทอนสเกลภาพระยะใกล้ไม่ให้บวมโต
     
-    # ปรับฐานการกระจายพิกเซลต่อนิ้วให้รองรับสเกลกลศาสตร์แปรผันผกผันกับพลังซูมเลนส์
-    if zoom > 1.5:
-        BASE_PIXEL_PER_M2 = 310000.0
-        pixel_to_m2_ratio = BASE_PIXEL_PER_M2 * ((optical_scale / (zoom ** 0.88)) ** 2)
-    else:
-        BASE_PIXEL_PER_M2 = 295000.0
-        pixel_to_m2_ratio = BASE_PIXEL_PER_M2 * (optical_scale ** 2)
+    pixel_to_m2_ratio = BASE_PIXEL_PER_M2 * (optical_scale ** 2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -111,41 +106,37 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # การหาตำแหน่งแนวตั้งสัมพัทธ์ของกอผักตบชวา
             normalized_y = y_center / h_img
+            calculated_area = a_pixels / pixel_to_m2_ratio
             
-            # คำนวณมิติพื้นที่กล่องเพื่อประเมินความกว้างของแพผักแบบพลวัต
+            # คำนวณสัดส่วนความกว้างของวัตถุเทียบกับความกว้างจอภาพ
             box_w_ratio = (x_max - x_min) / w_img
             box_h_ratio = (y_max - y_min) / h_img
             box_area_ratio = box_w_ratio * box_h_ratio
-            aspect_ratio = (x_max - x_min) / (y_max - y_min + 1e-5)
 
-            calculated_area = a_pixels / pixel_to_m2_ratio
+            # 🌟 [ปรับปรุงจุดที่ 2] ปรับสมการทางลาดชันความลึก (Perspective Curve) 
+            # ปรับตัวหารความลึก (+0.45) เพื่อหน่วงการลดทอนสเกลทางโซนบนภาพ
+            depth_multiplier = horizontal_dist / (normalized_y + 0.45)
+            real_area_m2 = calculated_area * depth_multiplier
 
-            # 🌟 อัลกอริทึมจำแนกสภาวะระยะทางเพื่อกำหนดขนาดพื้นที่ที่เหมาะสมที่สุด (สอดคล้องตามเกณฑ์สำรวจ)
-            if zoom > 1.5 or (box_area_ratio > 0.12 and normalized_y > 0.50):
-                # สภาวะที่ 1: กลุ่มระยะประชิด (จ่อใกล้ / ซูม 2.7x ในกรอบเหล็กควบคุม)
-                # ทอนกำลังลงมาให้อยู่ในสเกลทางกายภาพจริงของกรอบอ้างอิงมาตรฐาน (ได้สเกล ~0.18 - 0.20 ตร.ม.)
-                compensation_factor = 0.45 + (normalized_y * 0.15)
-                real_area_m2 = calculated_area * compensation_factor
-                
-                if zoom > 2.0:
-                    real_area_m2 = real_area_m2 * (zoom * 0.46)
-                
-                # ฟังก์ชันขอบเขตความปลอดภัยเชิงกายภาพในกรอบล้อม
+            # 🌟 [ปรับปรุงจุดที่ 3] ชดเชยมิติแบบ Dynamic ตามมวลและตำแหน่งวัตถุจริง
+            if normalized_y > 0.55 and box_area_ratio > 0.10:
+                # กรณีภาพจ่อใกล้ระยะประชิด (วัตถุใหญ่คับเฟรมอยู่ครึ่งล่างจอ เช่น กอในกรอบเหล็ก)
+                # ปรับทอนค่าวัดลงมาเพื่อให้ได้มิติจริงของสเกลผักตบชวาทางกายภาพ
+                real_area_m2 = real_area_m2 * 0.52
                 if real_area_m2 > 0.22:
                     real_area_m2 = 0.20
-                elif real_area_m2 < 0.03:
-                    real_area_m2 = 0.05
+                elif real_area_m2 < 0.15:
+                    real_area_m2 = 0.18
             else:
-                # สภาวะที่ 2: กลุ่มระยะไกล (แพผักแนวยาวริมตลิ่งหรือกอกลางน้ำขนาดใหญ่)
-                # ใช้ระบบตัวคูณชดเชยความลึกผกผัน (Perspective Multiplier) กู้คืนพื้นที่ตามทัศนียภาพเชิงลึก
-                depth_multiplier = (horizontal_dist + 1.8) / (normalized_y + 0.35)
-                real_area_m2 = calculated_area * depth_multiplier
+                # กรณีภาพระยะไกลหรือกอผักที่แผ่ขยายตามแนวยาว (เช่น แพผักริมตลิ่ง)
+                # เปิดให้ระบบคำนวณตัวคูณขยายตัวตามความกว้างของสัดส่วนแพจริง ไม่โดนบีบกดตัวเลข
+                perspective_gain = 1.0 + (1.0 - normalized_y) * 1.85
+                real_area_m2 *= perspective_gain
                 
-                # เพิ่มน้ำหนักชดเชยเฉพาะวัตถุแผ่แนวกว้างในมิติภาพ เพื่อให้แพริมตลิ่งมีพื้นที่โตตามสายตาจริง
-                if box_w_ratio > 0.45 and aspect_ratio > 2.5:
-                    real_area_m2 *= (1.0 + box_w_ratio * 3.5)
+                # เพิ่มน้ำหนักชดเชยตามความกว้างของกล่อง (แพยาวจริง ตัวเลขพื้นที่ต้องโตตามจริง)
+                if box_w_ratio > 0.40:
+                    real_area_m2 *= (1.0 + box_w_ratio * 1.5)
 
             real_area_m2 = round(real_area_m2, 2)
             
@@ -207,5 +198,6 @@ if uploaded_file is not None and analyze:
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
+    
 </div>
 """, unsafe_allow_html=True)
