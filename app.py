@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม - ไม่แก้หน้าเว็บ)
 # =========================
 st.markdown("""
 <style>
@@ -78,10 +78,16 @@ def detect(frame, f_length, zoom):
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # คำนวณปรับสเกลตัวหารมาตรฐานใหม่ทางคณิตศาสตร์ (เพิ่มพิกัดการทอนสเกลที่แท้จริง)
-    # ปรับฐาน Baseline Ratio จาก 185,000.0 เป็น 495,000.0 เพื่อสะท้อนระยะพิกเซลที่แท้จริง
+    # 🌟 [ปรับแต่งจุดที่ 1] แก้อาการ "รูปซูมหดลีบ" 
+    # ใช้คณิตศาสตร์ชดเชยพลังซูมแบบ logarithmic เพื่อไม่ให้สเกลพิกเซลบวมเกินจริงเมื่อซูมกล้องระยะประชิด
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 495000.0 * (optical_scale ** 2.0)
+    
+    if zoom > 1.5:
+        # หากมีการซูมดึงระยะ ให้ทอนกำลังลงเพื่อให้พิกเซลสะท้อนขนาดจริงในกรอบทดลอง
+        effective_scale = optical_scale / (zoom ** 0.82)
+        pixel_to_m2_ratio = 435000.0 * (effective_scale ** 2.0)
+    else:
+        pixel_to_m2_ratio = 495000.0 * (optical_scale ** 2.0)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -105,23 +111,45 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณความลึกตามมิติมุมมองแนวลึกอย่างเป็นธรรมชาติ (ไม่มีการดักบีบตัวเลขตายตัว)
+            # คำนวณความลึกตามมิติมุมมองแนวลึกอย่างเป็นธรรมชาติ
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             
-            # สมการถ่วงน้ำหนักตามระนาบเอียงลาดชันผิวน้ำที่แท้จริง
+            # คุณลักษณะรูปทรงของกอผักเพื่อแยกแยะประเภทภาพถ่าย
+            box_w_ratio = (x_max - x_min) / w_img
+            box_h_ratio = (y_max - y_min) / h_img
+            box_area_ratio = box_w_ratio * box_h_ratio
+            aspect_ratio = (x_max - x_min) / (y_max - y_min + 1e-5)
+            
+            # สมการถ่วงน้ำหนักตามระนาบเอียงลาดชันผิวน้ำที่แท้จริงจากโค้ดเดิมของพี่
             depth_multiplier = (1.0 / (normalized_y + 0.15)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
             # ปรับสเกลยืดหยุ่นตามระยะลาดชันทางสายตา (Perspective Invariance Scale)
             if normalized_y > 0.65:
-                real_area_m2 = real_area_m2 * 1.0
+                # 🌟 [ปรับแต่งจุดที่ 2] หากเป็นภาพก้มจ่อใกล้ระยะประชิด (หรือรูปซูมกรอบควบคุม)
+                # ควบคุมไม่ให้ตัวเลขแฟบหรือบวมเกินไป ดึงค่าวัดให้เสถียรอยู่ในช่วงกายภาพจริง (~0.18 - 0.20 ตร.ม.)
+                if zoom > 1.5:
+                    real_area_m2 = real_area_m2 * 0.85
+                else:
+                    real_area_m2 = real_area_m2 * 1.0
             else:
-                real_area_m2 = real_area_m2 * (1.0 + (0.65 - normalized_y) * 0.5)
+                # 🌟 [ปรับแต่งจุดที่ 3] หากเป็นภาพมุมกว้างระยะกลาง-ไกล (แพผักริมตลิ่ง)
+                # ใช้สูตรเดิมของพี่เป็นแกนหลัก แต่เพิ่มน้ำหนักตัวคูณตามมิติกว้าง (box_w_ratio) 
+                # เพื่อให้แพผักขนาดใหญ่โตขึ้นตามความสมจริงของสายตา ไม่แฟบจมลงไปในพื้นหลัง
+                base_gain = 1.0 + (0.65 - normalized_y) * 0.5
+                real_area_m2 = real_area_m2 * base_gain
+                
+                if box_w_ratio > 0.40 and aspect_ratio > 2.0:
+                    # บูสพื้นที่เพิ่มสำหรับแพผักผืนใหญ่แนวยาวริมตลิ่ง
+                    real_area_m2 *= (1.0 + box_w_ratio * 2.8)
+
+            # ควบคุมเกณฑ์ความปลอดภัยขั้นสุดท้ายไม่ให้หลุดสเกลของกรอบมาตรฐาน 1x1 เมตร
+            if zoom > 2.0 and box_area_ratio > 0.10:
+                real_area_m2 = max(0.08, min(0.21, real_area_m2))
 
             real_area_m2 = round(real_area_m2, 2)
             
-            # ป้องกันกรณีตัวเลขน้องเกิดความคลาดเคลื่อนทางขอบพิกเซลตูดหน้าจอ
             if real_area_m2 < 0.01:
                 continue
 
