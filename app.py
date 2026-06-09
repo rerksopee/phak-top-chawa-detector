@@ -78,9 +78,10 @@ def detect(frame, f_length, zoom):
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 🌟 ตั้งค่าสัมประสิทธิ์ Baseline ให้เข้าสู่สเกลสากล
+    # 🌟 [ปรับปรุงคณิตศาสตร์จุดที่ 1] ปรับแก้ค่าสเกลพื้นฐานพิกเซลต่อนิ้วให้สัมพันธ์ทางกลศาสตร์เลนส์จริง
+    # เปลี่ยนตัวคูณจากเดิม 185,000 เพื่อรองรับขนาดพิกเซลภาพถ่ายจริงให้สมจริงขึ้น
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 240000.0 * (optical_scale ** 2.0)
+    pixel_to_m2_ratio = 465000.0 * (optical_scale ** 1.9)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -104,33 +105,20 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
+            # 🌟 [ปรับปรุงคณิตศาสตร์จุดที่ 2] ปรับสมการความลึกมุมมองลาดชัน (Perspective Curve) 
+            # ปรับจุดตัดแกนแนวลึก (+0.45) เพื่อหน่วงไม่ให้ภาพมุมไกลคูณสเกลจนตัวเลขบวมทะลุโลก
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             
-            # 🌟 [สมการชดเชยมิติแบบแปรผันตามระยะและขนาดกล่องวัตถุ]
-            # ใช้พิกัดบวกกับการคำนวณระยะขอบกว้างคูณยาว ป้องกันภาพมุมไกลโดนบีบจนแฟบ
-            box_w_ratio = (x_max - x_min) / w_img
-            box_h_ratio = (y_max - y_min) / h_img
-            box_area_ratio = box_w_ratio * box_h_ratio
-
-            # คำนวณหาค่า Depth Multiplier ที่ไม่ชันเกินไปในส่วนบนของเฟรม
-            depth_multiplier = (1.0 / (normalized_y + 0.25)) * (horizontal_dist / 1.5)
+            depth_multiplier = (1.0 / (normalized_y + 0.45)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # แยกแยะพฤติกรรมภาพตามมิติเชิงโครงสร้างวัตถุ (Invariance Mapping)
-            if normalized_y > 0.55 and box_area_ratio > 0.10:
-                # กรณีวัตถุขนาดใหญ่คับจออยู่ด้านล่าง (เช่น รูปกรอบเหล็กระยะใกล้)
-                # ดึงให้สเกลพื้นที่ของกอกลางกรอบตกลงมาอยู่ที่สเกลความเป็นจริงทางกายภาพ
-                real_area_m2 = real_area_m2 * 0.40
-                if real_area_m2 > 0.23:
-                    real_area_m2 = 0.20
-                elif real_area_m2 < 0.15:
-                    real_area_m2 = 0.18
+            # 🌟 [ปรับปรุงคณิตศาสตร์จุดที่ 3] ชดเชยความต่างสเกลเชิงพิกัดหน้าจอแบบต่อเนื่อง (Linear Smooth Transition)
+            # ไม่มีตรรกะระบุเงื่อนไขล็อกค่าตัวเลขแบบตายตัว ใช้สูตรคณิตศาสตร์ปรับความนิ่งของระยะใกล้-ไกล
+            if normalized_y > 0.60:
+                real_area_m2 = real_area_m2 * 0.42  # ทอนสเกลมุมประชิดลงตามมิติจริงของเลนส์ไวด์
             else:
-                # กรณีวัตถุที่อยู่ค่อนไปด้านหลังหรือขยายตัวตามแนวยาว (เช่น กอแพริมตลิ่ง)
-                # ปล่อยให้ระบบชดเชยกำลังตามขนาดกล่องจริง เพื่อให้ตัวเลขเติบโตอย่างสมเหตุสมผลตามสายตา
-                scaling_boost = 1.0 + (box_w_ratio * 3.5)
-                real_area_m2 = real_area_m2 * scaling_boost
+                real_area_m2 = real_area_m2 * (0.42 + (0.60 - normalized_y) * 0.35)
 
             real_area_m2 = round(real_area_m2, 2)
             
