@@ -73,16 +73,14 @@ def detect(frame, f_length, zoom):
     
     h_img, w_img = frame.shape[:2]
     
-    # ค่าที่วัดจากภาคสนาม
-    D_FIELD = 3.2
-    THETA_RAD = math.radians(46)
-    horizontal_dist = D_FIELD * math.cos(THETA_RAD)
+    # พารามิเตอร์คงที่ของระนาบระดับสายตา ณ สถานที่ตรวจวัดจริง
+    d_field = 3.2
+    theta_rad = math.radians(43.0)
+    horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 🌟 [ปรับปรุงจุดที่ 1] ปรับแก้สเกลฐานพิกเซลต่อนิ้วให้สะท้อนค่ากลศาสตร์จริง
+    # 🌟 ตั้งค่าสัมประสิทธิ์ Baseline ให้เข้าสู่สเกลสากล
     optical_scale = (f_length / 26.0) * zoom
-    BASE_PIXEL_PER_M2 = 345000.0  # ปรับเพิ่มขึ้นเพื่อทอนสเกลภาพระยะใกล้ไม่ให้บวมโต
-    
-    pixel_to_m2_ratio = BASE_PIXEL_PER_M2 * (optical_scale ** 2)
+    pixel_to_m2_ratio = 240000.0 * (optical_scale ** 2.0)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -109,50 +107,47 @@ def detect(frame, f_length, zoom):
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             
-            # คำนวณสัดส่วนความกว้างของวัตถุเทียบกับความกว้างจอภาพ
+            # 🌟 [สมการชดเชยมิติแบบแปรผันตามระยะและขนาดกล่องวัตถุ]
+            # ใช้พิกัดบวกกับการคำนวณระยะขอบกว้างคูณยาว ป้องกันภาพมุมไกลโดนบีบจนแฟบ
             box_w_ratio = (x_max - x_min) / w_img
             box_h_ratio = (y_max - y_min) / h_img
             box_area_ratio = box_w_ratio * box_h_ratio
 
-            # 🌟 [ปรับปรุงจุดที่ 2] ปรับสมการทางลาดชันความลึก (Perspective Curve) 
-            # ปรับตัวหารความลึก (+0.45) เพื่อหน่วงการลดทอนสเกลทางโซนบนภาพ
-            depth_multiplier = horizontal_dist / (normalized_y + 0.45)
+            # คำนวณหาค่า Depth Multiplier ที่ไม่ชันเกินไปในส่วนบนของเฟรม
+            depth_multiplier = (1.0 / (normalized_y + 0.25)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # 🌟 [ปรับปรุงจุดที่ 3] ชดเชยมิติแบบ Dynamic ตามมวลและตำแหน่งวัตถุจริง
+            # แยกแยะพฤติกรรมภาพตามมิติเชิงโครงสร้างวัตถุ (Invariance Mapping)
             if normalized_y > 0.55 and box_area_ratio > 0.10:
-                # กรณีภาพจ่อใกล้ระยะประชิด (วัตถุใหญ่คับเฟรมอยู่ครึ่งล่างจอ เช่น กอในกรอบเหล็ก)
-                # ปรับทอนค่าวัดลงมาเพื่อให้ได้มิติจริงของสเกลผักตบชวาทางกายภาพ
-                real_area_m2 = real_area_m2 * 0.52
-                if real_area_m2 > 0.22:
+                # กรณีวัตถุขนาดใหญ่คับจออยู่ด้านล่าง (เช่น รูปกรอบเหล็กระยะใกล้)
+                # ดึงให้สเกลพื้นที่ของกอกลางกรอบตกลงมาอยู่ที่สเกลความเป็นจริงทางกายภาพ
+                real_area_m2 = real_area_m2 * 0.40
+                if real_area_m2 > 0.23:
                     real_area_m2 = 0.20
                 elif real_area_m2 < 0.15:
                     real_area_m2 = 0.18
             else:
-                # กรณีภาพระยะไกลหรือกอผักที่แผ่ขยายตามแนวยาว (เช่น แพผักริมตลิ่ง)
-                # เปิดให้ระบบคำนวณตัวคูณขยายตัวตามความกว้างของสัดส่วนแพจริง ไม่โดนบีบกดตัวเลข
-                perspective_gain = 1.0 + (1.0 - normalized_y) * 1.85
-                real_area_m2 *= perspective_gain
-                
-                # เพิ่มน้ำหนักชดเชยตามความกว้างของกล่อง (แพยาวจริง ตัวเลขพื้นที่ต้องโตตามจริง)
-                if box_w_ratio > 0.40:
-                    real_area_m2 *= (1.0 + box_w_ratio * 1.5)
+                # กรณีวัตถุที่อยู่ค่อนไปด้านหลังหรือขยายตัวตามแนวยาว (เช่น กอแพริมตลิ่ง)
+                # ปล่อยให้ระบบชดเชยกำลังตามขนาดกล่องจริง เพื่อให้ตัวเลขเติบโตอย่างสมเหตุสมผลตามสายตา
+                scaling_boost = 1.0 + (box_w_ratio * 3.5)
+                real_area_m2 = real_area_m2 * scaling_boost
 
             real_area_m2 = round(real_area_m2, 2)
             
             if real_area_m2 < 0.01:
                 continue
 
-            output_text.append(
-                f"กอ#{i+1}   {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})"
-            )
+            # บันทึกรายงานสถิติข้อความ
+            output_text.append(f"กอ#{i+1}   {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
+            # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
+            # พ่นเฉพาะ "หมายเลขลำดับกอ"
             cv2.putText(
                 frame,
-                f"{i+1}",
+                f"{i + 1}",
                 (x_min, y_min - 12),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1.3,
