@@ -78,9 +78,10 @@ def detect(frame, f_length, zoom):
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # ล็อกอัตราส่วนเชิงเส้นตรง ป้องกันสเกลพิกเซลบวมตามแรงซูมของกล้อง
+    # คำนวณปรับสเกลตัวหารมาตรฐานใหม่ทางคณิตศาสตร์ (เพิ่มพิกัดการทอนสเกลที่แท้จริง)
+    # ปรับฐาน Baseline Ratio จาก 185,000.0 เป็น 495,000.0 เพื่อสะท้อนระยะพิกเซลที่แท้จริง
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 185000.0 * (optical_scale ** 1.85)
+    pixel_to_m2_ratio = 495000.0 * (optical_scale ** 2.0)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -104,34 +105,28 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # คำนวณความลึกแบบผกผันตามสัญกรณ์ระดับความลึกพิกเซลแนวตั้ง
+            # คำนวณความลึกตามมิติมุมมองแนวลึกอย่างเป็นธรรมชาติ (ไม่มีการดักบีบตัวเลขตายตัว)
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
-            depth_multiplier = (1.0 / (normalized_y + 0.18)) * (horizontal_dist / 1.5)
+            
+            # สมการถ่วงน้ำหนักตามระนาบเอียงลาดชันผิวน้ำที่แท้จริง
+            depth_multiplier = (1.0 / (normalized_y + 0.15)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # ประเมินเกณฑ์ขั้นต่ำเชิงกายภาพจริงอิงตามระดับสายตาใกล้-ไกลบนผืนน้ำ
-            if normalized_y > 0.70:
-                real_area_m2 = max(0.08, real_area_m2 * 0.82)
+            # ปรับสเกลยืดหยุ่นตามระยะลาดชันทางสายตา (Perspective Invariance Scale)
+            if normalized_y > 0.65:
+                real_area_m2 = real_area_m2 * 1.0
             else:
-                real_area_m2 = max(0.12, real_area_m2)
-
-            # 🛡️ [ADDED SANITY CHECK] ตรรกะควบคุมความสมจริงขั้นสุดท้าย ป้องกันตัวเลขหลุดโลก
-            # เช็กสัดส่วนขนาดกล่องวัตถุว่าเทียบกับขนาดภาพทั้งหมดเป็นอย่างไร
-            box_area_ratio = ((x_max - x_min) * (y_max - y_min)) / (w_img * h_img)
-            
-            # ถ้ารูปจ่อใกล้ (กรอบเหลือง) วัตถุจะมีพิกเซลใหญ่คับจอ แต่พื้นที่ในโลกจริงต้องไม่ล้นกรอบ 1 ตร.ม.
-            if box_area_ratio > 0.10 and normalized_y > 0.50:
-                # บีบค่าวัดให้อยู่ในขอบเขตกรอบ 1 ตร.ม. เพื่อให้ได้ตัวเลขที่ใกล้เคียงความเป็นจริงที่สุด
-                if real_area_m2 > 1.0:
-                    real_area_m2 = min(0.48, real_area_m2 / 10.0)
-                elif real_area_m2 < 0.10:
-                    real_area_m2 = 0.35
+                real_area_m2 = real_area_m2 * (1.0 + (0.65 - normalized_y) * 0.5)
 
             real_area_m2 = round(real_area_m2, 2)
             
+            # ป้องกันกรณีตัวเลขน้องเกิดความคลาดเคลื่อนทางขอบพิกเซลตูดหน้าจอ
+            if real_area_m2 < 0.01:
+                continue
+
             # บันทึกรายงานสถิติข้อความ
-            output_text.append(f"กอ#{i+1}  {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
+            output_text.append(f"กอ#{i+1}   {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
             # วาดกรอบสี่เหลี่ยมควบคุมและจุดกึ่งกลางมวลของกอผัก
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
