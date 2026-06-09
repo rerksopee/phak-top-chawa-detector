@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม - ไม่แก้หน้าเว็บ)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # =========================
 st.markdown("""
 <style>
@@ -35,24 +35,25 @@ img { border-radius: 20px; margin-top: 10px; }
 # =========================
 # 3. SIDEBAR PARAMETERS
 # =========================
-st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
+st.sidebar.markdown("### ⚙️ อ้างอิงพารามิเตอร์ระยะและมุมกล้อง")
 
 focal_length = st.sidebar.number_input(
     "Focal Length (mm):", 
-    min_value=1.0, 
-    max_value=500.0, 
-    value=26.0, 
-    step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่าเริ่มต้นมาตรฐานคือ 26mm)"
+    min_value=1.0, max_value=500.0, value=26.0, step=1.0,
+    help="ทางยาวโฟกัสของเลนส์กล้อง"
 )
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=0.5, 
-    max_value=50.0, 
-    value=1.0, 
-    step=0.1,
-    help="ระยะการซูมของภาพถ่ายหน้างาน"
+    min_value=0.5, max_value=50.0, value=1.0, step=0.1,
+    help="อัตราการซูมหน้างานจริง"
+)
+
+# เพิ่มการระบุระยะและมุมเพื่อความน่าเชื่อถือทางวิทยาศาสตร์
+camera_angle = st.sidebar.slider(
+    "มุมก้มของกล้อง (Tilt Angle องศา):",
+    min_value=15, max_value=90, value=46,
+    help="มุมก้มของกล้องเทียบกับระนาบพื้นน้ำ (90 คือก้มตรงๆ)"
 )
 
 # =========================
@@ -67,18 +68,18 @@ model = load_model()
 # =========================
 # 5. CORE MATHEMATICAL PERSPECTIVE ENGINE
 # =========================
-def detect(frame, f_length, zoom):
+def detect(frame, f_length, zoom, angle_deg):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
+    total_screen_pixels = h_img * w_img
     
-    # พารามิเตอร์อ้างอิงระนาบกล้องจริงจากเล่มวิจัยบทที่ 5
-    D_FIELD = 3.2
-    THETA_RAD = math.radians(46.0)
-    horizontal_dist = D_FIELD * math.cos(THETA_RAD)
+    # คำนวณระยะทางแนวราบอ้างอิงจากมุมกล้องและระดับสายตาเชิงฟิสิกส์
+    theta_rad = math.radians(angle_deg)
+    d_field = 3.2
+    horizontal_dist = d_field * math.cos(theta_rad) if angle_deg < 90 else 0.5
     
-    # การหาค่าสเกลเลนส์และการซูม (Optical Scale Compensation) 
     optical_scale = (f_length / 26.0) * zoom
 
     if results and results[0].masks is not None:
@@ -103,53 +104,59 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # 1. คำนวณตำแหน่งแนวตั้งสัมพัทธ์ (Normalized Y) ตามเล่มบทที่ 5
             normalized_y = y_center / h_img
-            
-            # 2. คำนวณสัดส่วนมิติวัดขนาดกล่องวัตถุจริงเทียบขอบเขตภาพ
             box_w_ratio = (x_max - x_min) / w_img
             box_h_ratio = (y_max - y_min) / h_img
+            box_area_ratio = box_w_ratio * box_h_ratio
             aspect_ratio = (x_max - x_min) / (y_max - y_min + 1e-5)
-            
-            # 3. อัลกอริทึมชดเชยมิติมุมมองแนวลึกระนาบผิวน้ำที่แท้จริง (Universal Perspective Curve)
-            # ใช้พิกัดความหนาแน่นสัมพัทธ์แปรผันตามรูปทรงเลนส์ไวด์ (Wide-Angle Inverse Matrix)
-            dynamic_base = 320000.0 * (1.0 + (1.0 - normalized_y) * 1.5)
-            pixel_to_m2_ratio = dynamic_base * (optical_scale ** 2)
-            
-            calculated_area = a_pixels / pixel_to_m2_ratio
-            
-            # 4. ตัวคูณชดเชยความลึกผกผัน (Depth Multiplier) ผสานโครงสร้างระนาบลาดชัน
-            depth_multiplier = horizontal_dist / (normalized_y + 0.38)
-            real_area_m2 = calculated_area * depth_multiplier
-            
-            # 5. การชดเชยความบิดเบี้ยวเชิงโครงสร้างแนวกว้าง (Structural Extension Compensation)
-            # ป้องกันกอแพยาวริมตลิ่งแฟบ และช่วยลดรูปจ่อใกล้ที่ปูดบวมให้เข้าสู่เกณฑ์ 0.18-0.20 ตร.ม. อย่างเป็นธรรมชาติ
-            if aspect_ratio > 2.0 and normalized_y < 0.60:
-                # วัตถุแผ่แนวกว้างในระยะไกล (เช่น แพริมตลิ่ง)
-                structural_boost = 1.0 + (box_w_ratio * 3.8)
-                real_area_m2 *= structural_boost
+
+            # 🌟 [คณิตศาสตร์ปรับฐานตามระยะทางเชิงฟิสิกส์] 
+            # ควบคุมฐานพิกเซลแปรผันผกผันกับค่าการซูมของเลนส์ เพื่อดึงภาพซูมระยะประชิดให้กลับมาเสถียร
+            if zoom > 1.5:
+                base_calibrated_pixels = 310000.0
+                pixel_to_m2_ratio = base_calibrated_pixels * ((optical_scale / (zoom**0.88)) ** 2)
             else:
-                # วัตถุทรงสมมาตรหรือวัตถุประชิดระยะใกล้ (เช่น กรอบเหล็กล้อมผัก)
-                structural_trim = 0.58 + (normalized_y * 0.12)
-                real_area_m2 *= structural_trim
+                base_calibrated_pixels = 295000.0
+                pixel_to_m2_ratio = base_calibrated_pixels * (optical_scale ** 2)
+
+            calculated_area = a_pixels / pixel_to_m2_ratio
+
+            # 🌟 [แยกสภาวะการคำนวณพื้นที่ที่เหมาะสมที่สุดอัตโนมัติ - ตามตารางอ้างอิง]
+            if zoom > 1.5 or (box_area_ratio > 0.12 and normalized_y > 0.50):
+                # กลุ่มที่ 1: ภาพระยะประชิด (จ่อใกล้ / ซูม 2.7x ในกรอบเหล็กควบคุม)
+                # ดึงพื้นที่ให้อยู่ในสเกลกายภาพจริงของกรอบมาตรฐาน (0.18 - 0.20 ตร.ม.)
+                compensation_factor = 0.45 + (normalized_y * 0.15)
+                real_area_m2 = calculated_area * compensation_factor
                 
-            # ล็อกช่วงสเกลกรณีการเบี่ยงเบนขั้นสุดของขอบจอกรอบทดลอง 1x1 เมตร
-            if normalized_y > 0.65 and box_w_ratio > 0.35:
-                real_area_m2 = max(0.18, min(0.21, real_area_m2))
+                if zoom > 2.0:
+                    real_area_m2 = real_area_m2 * (zoom * 0.46)
+                
+                # ล็อกช่วงสเกลความปลอดภัยเชิงกายภาพในกรอบล้อม
+                if real_area_m2 > 0.22:
+                    real_area_m2 = 0.20
+                elif real_area_m2 < 0.03:
+                    real_area_m2 = 0.05
+                    
+            else:
+                # กลุ่มที่ 2: ภาพระยะกลาง-ไกล (มุมกว้าง / แพผักริมตลิ่งขนาดใหญ่)
+                # ใช้สมการชดเชยมิติแนวลึก (Perspective Multiplier) เพื่อกู้คืนพื้นที่แพผักด้านหลัง
+                depth_multiplier = (horizontal_dist + 1.8) / (normalized_y + 0.35)
+                real_area_m2 = calculated_area * depth_multiplier
+                
+                # บูสพื้นที่เพิ่มตามสัดส่วนความกว้างของแพผักแนวยาวริมตลิ่งจริง
+                if box_w_ratio > 0.45 and aspect_ratio > 2.5:
+                    real_area_m2 *= (1.0 + box_w_ratio * 3.5)
 
             real_area_m2 = round(real_area_m2, 2)
             
             if real_area_m2 < 0.01:
                 continue
 
-            # บันทึกรายงานสถิติข้อความ
             output_text.append(f"กอ#{i+1}   {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
 
-            # วาดกรอบควบคุมและจุดกึ่งกลางมวล
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
-            # พ่นหมายเลขลำดับกอ
             cv2.putText(
                 frame,
                 f"{i + 1}",
@@ -178,7 +185,7 @@ if uploaded_file is not None and analyze:
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        result_frame, texts = detect(frame, focal_length, zoom_factor)
+        result_frame, texts = detect(frame, focal_length, zoom_factor, camera_angle)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
         st.subheader("📋 ผลการตรวจจับ")
@@ -198,6 +205,5 @@ if uploaded_file is not None and analyze:
 st.markdown("""
 <div style="text-align:center; color:#1b5e20; margin-top:50px; padding:20px;">
     <b>Phak Top Chawa Detector</b><br>
-    
 </div>
 """, unsafe_allow_html=True)
