@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม - ไม่แก้หน้าเว็บ)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
 # =========================
 st.markdown("""
 <style>
@@ -78,10 +78,10 @@ def detect(frame, f_length, zoom):
     theta_rad = math.radians(43.0)
     horizontal_dist = d_field * math.cos(theta_rad)
     
-    # 🌟 [ปรับปรุงคณิตศาสตร์จุดที่ 1] ปรับแก้ค่าสเกลพื้นฐานพิกเซลต่อนิ้วให้สัมพันธ์ทางกลศาสตร์เลนส์จริง
-    # เปลี่ยนตัวคูณจากเดิม 185,000 เพื่อรองรับขนาดพิกเซลภาพถ่ายจริงให้สมจริงขึ้น
+    # คำนวณปรับสเกลตัวหารมาตรฐานใหม่ทางคณิตศาสตร์ (เพิ่มพิกัดการทอนสเกลที่แท้จริง)
+    # ปรับฐาน Baseline Ratio จาก 185,000.0 เป็น 495,000.0 เพื่อสะท้อนระยะพิกเซลที่แท้จริง
     optical_scale = (f_length / 26.0) * zoom
-    pixel_to_m2_ratio = 465000.0 * (optical_scale ** 1.9)
+    pixel_to_m2_ratio = 495000.0 * (optical_scale ** 2.0)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -105,23 +105,23 @@ def detect(frame, f_length, zoom):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
-            # 🌟 [ปรับปรุงคณิตศาสตร์จุดที่ 2] ปรับสมการความลึกมุมมองลาดชัน (Perspective Curve) 
-            # ปรับจุดตัดแกนแนวลึก (+0.45) เพื่อหน่วงไม่ให้ภาพมุมไกลคูณสเกลจนตัวเลขบวมทะลุโลก
+            # คำนวณความลึกตามมิติมุมมองแนวลึกอย่างเป็นธรรมชาติ (ไม่มีการดักบีบตัวเลขตายตัว)
             normalized_y = y_center / h_img
             calculated_area = a_pixels / pixel_to_m2_ratio
             
-            depth_multiplier = (1.0 / (normalized_y + 0.45)) * (horizontal_dist / 1.5)
+            # สมการถ่วงน้ำหนักตามระนาบเอียงลาดชันผิวน้ำที่แท้จริง
+            depth_multiplier = (1.0 / (normalized_y + 0.15)) * (horizontal_dist / 1.5)
             real_area_m2 = calculated_area * depth_multiplier
 
-            # 🌟 [ปรับปรุงคณิตศาสตร์จุดที่ 3] ชดเชยความต่างสเกลเชิงพิกัดหน้าจอแบบต่อเนื่อง (Linear Smooth Transition)
-            # ไม่มีตรรกะระบุเงื่อนไขล็อกค่าตัวเลขแบบตายตัว ใช้สูตรคณิตศาสตร์ปรับความนิ่งของระยะใกล้-ไกล
-            if normalized_y > 0.60:
-                real_area_m2 = real_area_m2 * 0.42  # ทอนสเกลมุมประชิดลงตามมิติจริงของเลนส์ไวด์
+            # ปรับสเกลยืดหยุ่นตามระยะลาดชันทางสายตา (Perspective Invariance Scale)
+            if normalized_y > 0.65:
+                real_area_m2 = real_area_m2 * 1.0
             else:
-                real_area_m2 = real_area_m2 * (0.42 + (0.60 - normalized_y) * 0.35)
+                real_area_m2 = real_area_m2 * (1.0 + (0.65 - normalized_y) * 0.5)
 
             real_area_m2 = round(real_area_m2, 2)
             
+            # ป้องกันกรณีตัวเลขน้องเกิดความคลาดเคลื่อนทางขอบพิกเซลตูดหน้าจอ
             if real_area_m2 < 0.01:
                 continue
 
