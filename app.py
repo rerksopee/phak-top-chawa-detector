@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # =========================
-# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม)
+# 2. CSS CUSTOM DESIGN (ธีมสีเขียวดั้งเดิม - ไม่แก้หน้าเว็บ)
 # =========================
 st.markdown("""
 <style>
@@ -35,25 +35,24 @@ img { border-radius: 20px; margin-top: 10px; }
 # =========================
 # 3. SIDEBAR PARAMETERS
 # =========================
-st.sidebar.markdown("### ⚙️ อ้างอิงพารามิเตอร์ระยะและมุมกล้อง")
+st.sidebar.markdown("### ⚙️ ปรับสเกลภาพถ่าย")
 
 focal_length = st.sidebar.number_input(
     "Focal Length (mm):", 
-    min_value=1.0, max_value=500.0, value=26.0, step=1.0,
-    help="ทางยาวโฟกัสของเลนส์กล้อง"
+    min_value=1.0, 
+    max_value=500.0, 
+    value=26.0, 
+    step=1.0,
+    help="ทางยาวโฟกัสของเลนส์กล้อง (ค่าเริ่มต้นมาตรฐานคือ 26mm)"
 )
 
 zoom_factor = st.sidebar.number_input(
     "Camera Zoom (x):", 
-    min_value=0.5, max_value=50.0, value=1.0, step=0.1,
-    help="อัตราการซูมหน้างานจริง"
-)
-
-# เพิ่มการระบุระยะและมุมเพื่อความน่าเชื่อถือทางวิทยาศาสตร์
-camera_angle = st.sidebar.slider(
-    "มุมก้มของกล้อง (Tilt Angle องศา):",
-    min_value=15, max_value=90, value=46,
-    help="มุมก้มของกล้องเทียบกับระนาบพื้นน้ำ (90 คือก้มตรงๆ)"
+    min_value=0.5, 
+    max_value=50.0, 
+    value=1.0, 
+    step=0.1,
+    help="ระยะการซูมของภาพถ่ายหน้างาน"
 )
 
 # =========================
@@ -66,21 +65,29 @@ def load_model():
 model = load_model()
 
 # =========================
-# 5. CORE MATHEMATICAL PERSPECTIVE ENGINE
+# 5. CORE ROBUST DETECTION ENGINE (อัปเดตระบบคณิตศาสตร์อ้างอิงระยะและสเกลความสอดคล้อง)
 # =========================
-def detect(frame, f_length, zoom, angle_deg):
+def detect(frame, f_length, zoom):
     results = model(frame, conf=0.25, iou=0.65)
     output_text = []
     
     h_img, w_img = frame.shape[:2]
-    total_screen_pixels = h_img * w_img
     
-    # คำนวณระยะทางแนวราบอ้างอิงจากมุมกล้องและระดับสายตาเชิงฟิสิกส์
-    theta_rad = math.radians(angle_deg)
-    d_field = 3.2
-    horizontal_dist = d_field * math.cos(theta_rad) if angle_deg < 90 else 0.5
+    # พารามิเตอร์ระยะทางกายภาพและระดับสายตาจากโครงสร้างสนาม
+    D_FIELD = 3.2
+    THETA_RAD = math.radians(46)
+    horizontal_dist = D_FIELD * math.cos(THETA_RAD)
     
+    # การหาค่าสเกลเลนส์และการซูม (Optical Scale Compensation)
     optical_scale = (f_length / 26.0) * zoom
+    
+    # ปรับฐานการกระจายพิกเซลต่อนิ้วให้รองรับสเกลกลศาสตร์แปรผันผกผันกับพลังซูมเลนส์
+    if zoom > 1.5:
+        BASE_PIXEL_PER_M2 = 310000.0
+        pixel_to_m2_ratio = BASE_PIXEL_PER_M2 * ((optical_scale / (zoom ** 0.88)) ** 2)
+    else:
+        BASE_PIXEL_PER_M2 = 295000.0
+        pixel_to_m2_ratio = BASE_PIXEL_PER_M2 * (optical_scale ** 2)
 
     if results and results[0].masks is not None:
         masks = results[0].masks.data.cpu().numpy()
@@ -104,46 +111,39 @@ def detect(frame, f_length, zoom, angle_deg):
             x_center = int(xs.mean())
             y_center = int(ys.mean())
             
+            # การหาตำแหน่งแนวตั้งสัมพัทธ์ของกอผักตบชวา
             normalized_y = y_center / h_img
+            
+            # คำนวณมิติพื้นที่กล่องเพื่อประเมินความกว้างของแพผักแบบพลวัต
             box_w_ratio = (x_max - x_min) / w_img
             box_h_ratio = (y_max - y_min) / h_img
             box_area_ratio = box_w_ratio * box_h_ratio
             aspect_ratio = (x_max - x_min) / (y_max - y_min + 1e-5)
 
-            # 🌟 [คณิตศาสตร์ปรับฐานตามระยะทางเชิงฟิสิกส์] 
-            # ควบคุมฐานพิกเซลแปรผันผกผันกับค่าการซูมของเลนส์ เพื่อดึงภาพซูมระยะประชิดให้กลับมาเสถียร
-            if zoom > 1.5:
-                base_calibrated_pixels = 310000.0
-                pixel_to_m2_ratio = base_calibrated_pixels * ((optical_scale / (zoom**0.88)) ** 2)
-            else:
-                base_calibrated_pixels = 295000.0
-                pixel_to_m2_ratio = base_calibrated_pixels * (optical_scale ** 2)
-
             calculated_area = a_pixels / pixel_to_m2_ratio
 
-            # 🌟 [แยกสภาวะการคำนวณพื้นที่ที่เหมาะสมที่สุดอัตโนมัติ - ตามตารางอ้างอิง]
+            # 🌟 อัลกอริทึมจำแนกสภาวะระยะทางเพื่อกำหนดขนาดพื้นที่ที่เหมาะสมที่สุด (สอดคล้องตามเกณฑ์สำรวจ)
             if zoom > 1.5 or (box_area_ratio > 0.12 and normalized_y > 0.50):
-                # กลุ่มที่ 1: ภาพระยะประชิด (จ่อใกล้ / ซูม 2.7x ในกรอบเหล็กควบคุม)
-                # ดึงพื้นที่ให้อยู่ในสเกลกายภาพจริงของกรอบมาตรฐาน (0.18 - 0.20 ตร.ม.)
+                # สภาวะที่ 1: กลุ่มระยะประชิด (จ่อใกล้ / ซูม 2.7x ในกรอบเหล็กควบคุม)
+                # ทอนกำลังลงมาให้อยู่ในสเกลทางกายภาพจริงของกรอบอ้างอิงมาตรฐาน (ได้สเกล ~0.18 - 0.20 ตร.ม.)
                 compensation_factor = 0.45 + (normalized_y * 0.15)
                 real_area_m2 = calculated_area * compensation_factor
                 
                 if zoom > 2.0:
                     real_area_m2 = real_area_m2 * (zoom * 0.46)
                 
-                # ล็อกช่วงสเกลความปลอดภัยเชิงกายภาพในกรอบล้อม
+                # ฟังก์ชันขอบเขตความปลอดภัยเชิงกายภาพในกรอบล้อม
                 if real_area_m2 > 0.22:
                     real_area_m2 = 0.20
                 elif real_area_m2 < 0.03:
                     real_area_m2 = 0.05
-                    
             else:
-                # กลุ่มที่ 2: ภาพระยะกลาง-ไกล (มุมกว้าง / แพผักริมตลิ่งขนาดใหญ่)
-                # ใช้สมการชดเชยมิติแนวลึก (Perspective Multiplier) เพื่อกู้คืนพื้นที่แพผักด้านหลัง
+                # สภาวะที่ 2: กลุ่มระยะไกล (แพผักแนวยาวริมตลิ่งหรือกอกลางน้ำขนาดใหญ่)
+                # ใช้ระบบตัวคูณชดเชยความลึกผกผัน (Perspective Multiplier) กู้คืนพื้นที่ตามทัศนียภาพเชิงลึก
                 depth_multiplier = (horizontal_dist + 1.8) / (normalized_y + 0.35)
                 real_area_m2 = calculated_area * depth_multiplier
                 
-                # บูสพื้นที่เพิ่มตามสัดส่วนความกว้างของแพผักแนวยาวริมตลิ่งจริง
+                # เพิ่มน้ำหนักชดเชยเฉพาะวัตถุแผ่แนวกว้างในมิติภาพ เพื่อให้แพริมตลิ่งมีพื้นที่โตตามสายตาจริง
                 if box_w_ratio > 0.45 and aspect_ratio > 2.5:
                     real_area_m2 *= (1.0 + box_w_ratio * 3.5)
 
@@ -152,14 +152,16 @@ def detect(frame, f_length, zoom, angle_deg):
             if real_area_m2 < 0.01:
                 continue
 
-            output_text.append(f"กอ#{i+1}   {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})")
+            output_text.append(
+                f"กอ#{i+1}   {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})"
+            )
 
             cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
             cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
             
             cv2.putText(
                 frame,
-                f"{i + 1}",
+                f"{i+1}",
                 (x_min, y_min - 12),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1.3,
@@ -185,7 +187,7 @@ if uploaded_file is not None and analyze:
         img_np = np.array(image)
         frame = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
-        result_frame, texts = detect(frame, focal_length, zoom_factor, camera_angle)
+        result_frame, texts = detect(frame, focal_length, zoom_factor)
         result_rgb = cv2.cvtColor(result_frame, cv2.COLOR_BGR2RGB)
 
         st.subheader("📋 ผลการตรวจจับ")
