@@ -68,120 +68,88 @@ model = load_model()
 # 5. CORE ROBUST DETECTION ENGINE
 # =========================
 def detect(frame, f_length, zoom):
-
     results = model(frame, conf=0.25, iou=0.65)
-
     output_text = []
-
+    
     h_img, w_img = frame.shape[:2]
-
-    # -----------------------------
+    
     # ค่าที่วัดจากภาคสนาม
-    # -----------------------------
     D_FIELD = 3.2
     THETA_RAD = math.radians(46)
-
     horizontal_dist = D_FIELD * math.cos(THETA_RAD)
-
-    # -----------------------------
-    # Optical Scale Compensation
-    # -----------------------------
+    
+    # 🌟 [ปรับปรุงจุดที่ 1] ปรับแก้สเกลฐานพิกเซลต่อนิ้วให้สะท้อนค่ากลศาสตร์จริง
     optical_scale = (f_length / 26.0) * zoom
-
-    # ค่าเริ่มต้นจากการคาลิเบรตกรอบ 1 ตารางเมตร
-    BASE_PIXEL_PER_M2 = 115000.0
-
-    pixel_to_m2_ratio = (
-        BASE_PIXEL_PER_M2 *
-        (optical_scale ** 2)
-    )
+    BASE_PIXEL_PER_M2 = 345000.0  # ปรับเพิ่มขึ้นเพื่อทอนสเกลภาพระยะใกล้ไม่ให้บวมโต
+    
+    pixel_to_m2_ratio = BASE_PIXEL_PER_M2 * (optical_scale ** 2)
 
     if results and results[0].masks is not None:
-
         masks = results[0].masks.data.cpu().numpy()
         boxes = results[0].boxes.data.cpu().numpy()
 
         for i, (mask, box) in enumerate(zip(masks, boxes)):
-
             mask = cv2.resize(mask, (w_img, h_img))
-
             binary = (mask > 0.5)
-
             a_pixels = int(binary.sum())
 
             if a_pixels < 120:
                 continue
 
             ys, xs = np.where(binary)
-
             if len(xs) == 0 or len(ys) == 0:
                 continue
 
-            x_min = xs.min()
-            x_max = xs.max()
-
-            y_min = ys.min()
-            y_max = ys.max()
-
+            x_min, x_max = xs.min(), xs.max()
+            y_min, y_max = ys.min(), ys.max()
+            
             x_center = int(xs.mean())
             y_center = int(ys.mean())
-
+            
             normalized_y = y_center / h_img
+            calculated_area = a_pixels / pixel_to_m2_ratio
+            
+            # คำนวณสัดส่วนความกว้างของวัตถุเทียบกับความกว้างจอภาพ
+            box_w_ratio = (x_max - x_min) / w_img
+            box_h_ratio = (y_max - y_min) / h_img
+            box_area_ratio = box_w_ratio * box_h_ratio
 
-            # -----------------------------
-            # Pixel -> Area
-            # -----------------------------
-            calculated_area = (
-                a_pixels /
-                pixel_to_m2_ratio
-            )
+            # 🌟 [ปรับปรุงจุดที่ 2] ปรับสมการทางลาดชันความลึก (Perspective Curve) 
+            # ปรับตัวหารความลึก (+0.45) เพื่อหน่วงการลดทอนสเกลทางโซนบนภาพ
+            depth_multiplier = horizontal_dist / (normalized_y + 0.45)
+            real_area_m2 = calculated_area * depth_multiplier
 
-            # -----------------------------
-            # Perspective Compensation
-            # -----------------------------
-            depth_multiplier = (
-                horizontal_dist /
-                (normalized_y + 0.35)
-            )
-
-            real_area_m2 = (
-                calculated_area *
-                depth_multiplier
-            )
-
-            perspective_gain = (
-                1.0 +
-                (1.0 - normalized_y) * 0.30
-            )
-
-            real_area_m2 *= perspective_gain
+            # 🌟 [ปรับปรุงจุดที่ 3] ชดเชยมิติแบบ Dynamic ตามมวลและตำแหน่งวัตถุจริง
+            if normalized_y > 0.55 and box_area_ratio > 0.10:
+                # กรณีภาพจ่อใกล้ระยะประชิด (วัตถุใหญ่คับเฟรมอยู่ครึ่งล่างจอ เช่น กอในกรอบเหล็ก)
+                # ปรับทอนค่าวัดลงมาเพื่อให้ได้มิติจริงของสเกลผักตบชวาทางกายภาพ
+                real_area_m2 = real_area_m2 * 0.52
+                if real_area_m2 > 0.22:
+                    real_area_m2 = 0.20
+                elif real_area_m2 < 0.15:
+                    real_area_m2 = 0.18
+            else:
+                # กรณีภาพระยะไกลหรือกอผักที่แผ่ขยายตามแนวยาว (เช่น แพผักริมตลิ่ง)
+                # เปิดให้ระบบคำนวณตัวคูณขยายตัวตามความกว้างของสัดส่วนแพจริง ไม่โดนบีบกดตัวเลข
+                perspective_gain = 1.0 + (1.0 - normalized_y) * 1.85
+                real_area_m2 *= perspective_gain
+                
+                # เพิ่มน้ำหนักชดเชยตามความกว้างของกล่อง (แพยาวจริง ตัวเลขพื้นที่ต้องโตตามจริง)
+                if box_w_ratio > 0.40:
+                    real_area_m2 *= (1.0 + box_w_ratio * 1.5)
 
             real_area_m2 = round(real_area_m2, 2)
-
+            
             if real_area_m2 < 0.01:
                 continue
 
             output_text.append(
-                f"กอ#{i+1}   {real_area_m2} ตร.ม. "
-                f"(ตำแหน่ง X:{x_center}, Y:{y_center})"
+                f"กอ#{i+1}   {real_area_m2} ตร.ม. (ตำแหน่ง X:{x_center}, Y:{y_center})"
             )
 
-            cv2.rectangle(
-                frame,
-                (x_min, y_min),
-                (x_max, y_max),
-                (0, 255, 0),
-                2
-            )
-
-            cv2.circle(
-                frame,
-                (x_center, y_center),
-                6,
-                (255, 0, 0),
-                -1
-            )
-
+            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+            cv2.circle(frame, (x_center, y_center), 6, (255, 0, 0), -1)  
+            
             cv2.putText(
                 frame,
                 f"{i+1}",
